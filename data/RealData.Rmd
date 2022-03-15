@@ -1,0 +1,490 @@
+---
+title: "Data import"
+author: "Alessia Buratin"
+date: 'Compiled: `r format(Sys.Date(), "%d %B, %Y")`'
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_depth: 3
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    theme: united
+  pdf_document:
+    toc: true
+    highlight: zenburn
+editor_options: 
+  chunk_output_type: console
+runtime: static
+bibliography: Libreria_personale.bib
+link-citations: yes
+biblio-style: apsr
+---
+
+
+# Data loading
+
+Data from Buratin et al. (2020)
+
+```{r setupLibrary, include = FALSE}
+library(reshape2)
+library(ggplot2)
+library(cowplot)
+library(edgeR)
+library(dplyr)
+library(ggrepel)
+library(SummarizedExperiment)
+library(pscl)
+library(AER)
+library(ggplot2)
+library(kableExtra)
+library(affy)
+library(data.table)
+library(purrr)
+library(zinbwave)
+library(DESeq2)
+library(plotly)
+library(Hmisc)
+library(reshape)
+library(scales)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(grid)
+library(captioner)
+library(RColorBrewer)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	collapse = TRUE,
+	comment = "#>",
+	echo = FALSE
+)
+#source("additional_functions.R")
+tbls <- captioner(prefix="Table")
+figs <- captioner(prefix="Figure")
+
+```
+
+## T-ALL and thymocytes Data (Buratin et al.)
+
+Keep circRNAs with more than 2 counts in more than 2 samples.
+A dataset is composed by samples from 9 normal and 25 tumor samples.
+
+```{r include=FALSE}
+## function to get count matrix for each detection methods
+get.method.count.matrix <- function(method, x){
+  as.matrix(dcast(data = x[V2 == method],
+                  formula = circRNA_ID ~ sampleID,
+                  value.var = "V6", fill = 0,
+                  fun.aggregate = sum),
+            rownames = "circRNA_ID")
+}
+
+# detection methods to be compared
+methods_det <- c("findcirc", "dcc", "ciri", "circexplorer2_star")
+
+## import data
+if(!file.exists("/blackhole/alessia/GLMM_article/data/TALLData_list.RData")){
+  
+  count.data.file <- "/blackhole/circrna/analyses/VanVlierberghe/merge_T/circrnas.gtf.list.txt"
+  colClasses <- c("factor", "factor", "character", "integer", "integer", 
+                "integer", "factor", "character", "character")
+  V9pattern <- '.*gene_id "([^"]*)".*transcript_id "([^"]*)".*'
+  V9newCols <- c("gene_id", "transcript_id")
+  ## load circRNA data
+  gtf.file.list <- readLines(count.data.file)
+  circrnas.gtf <- unique(rbindlist(lapply(gtf.file.list, fread, data.table = T, 
+                                          colClasses = colClasses))) 
+  count.data <- circrnas.gtf[, `:=`(circRNA_ID = paste0(V1, ":", V4, "-", V5),
+                                    sampleID = gsub("-", "_", sub('.*sample_id "([^"]+)".*', "\\1",
+                                                                                V9)))]
+  
+  get.method.count.matrix <- function(method, x){
+    as.matrix(dcast(data = x[V2 == method],
+                    formula = circRNA_ID ~ sampleID,
+                    value.var = "V6", fill = 0,
+                    fun.aggregate = sum),
+              rownames = "circRNA_ID")
+  }
+
+  # list of count matrices foreach methdos
+  TALLData_list <- list()
+  for(i in 1:length(methods)){
+    cat("method:",methods[i],"\n")
+    # Keep bodysite
+    m = dcast(data = count.data[V2 == methods[i]],
+                  formula = circRNA_ID ~ sampleID,
+                  value.var = "V6", 
+                  fill = 0, fun.aggregate = sum)
+    ps <- as.matrix(m[,-1])
+    rownames(ps) <- m$circRNA_ID
+    # Keep one sample for each Random Subject IDentifier
+    ps <- ps[rowSums(ps>=2)>=2,]
+    TALLData_list[[i]] <- ps
+    names(TALLData_list)[i] <- methods[i]
+  }
+  
+  save(TALLData_list, file = "/blackhole/alessia/GLMM_article/data/TALLData_list.RData")
+} else load("/blackhole/alessia/GLMM_article/data/TALLData_list.RData")
+
+```
+
+```{r, include=FALSE}
+fix.name <- function(x){
+  gsub(pattern = " ", replacement = "", 
+       sub("^([0-9].*)", "X\\1",
+           sub("C$", "",
+                gsub("^X", "",
+                    gsub(pattern = "-|/", replacement = "_", 
+                        gsub("\\+", "p", x))))))
+}
+
+```
+
+
+```{r TALL_meta, echo=FALSE, include=FALSE}
+library(stringr)
+basedir.tall <- "/blackhole/circrna/analyses/VanVlierberghe/TALL/"
+meta_file_tall <- file.path(basedir.tall, "analyses/meta_tall.csv")
+# create meta file with sample.ID, condition, from meta_tall.csv
+if(meta_file_tall != ""){
+  meta_tall <- unique(fread(meta_file_tall)[, .(sample_id = paste0(gsub("_", "-", Donor), "C"), 
+                                                condition = Condition,
+                                                tissue = Tissue,
+                                                Age = gsub(",", ".", Age),
+                                                Sex,
+                                                RNAQuality)])
+  meta_tall$condition <- gsub("  ", " ", meta_tall$condition)
+  # meta_tall$condition <- factor(meta_tall$condition, levels = tall.subsamples, ordered = T)
+  # intgroup.dt.tall <- get.color.hues(meta_tall)
+}
+meta_tall[, `:=` (sample_id2 = str_sub(sample_id, 12,13))]
+meta_tall[, `:=` (sample_id3 = paste(fix.name(condition), sample_id2, sep="_"))]
+# meta_tall$sample_id <- meta_tall$sample_id %>% str_replace_all("X", "")
+# intgroup.dt$sample_id <- intgroup.dt$sample_id %>% str_replace_all("X", "")
+
+```
+
+
+```{r Norm_meta, echo=FALSE, include=FALSE}
+basedir.N <- "/blackhole/circrna/analyses/VanVlierberghe/T_norm/analysis_2019/"
+meta_file.N <- file.path(basedir.N, "meta.csv")
+# create meta file with sample.ID, condition, Donor, tissue from meta.csv
+if(meta_file.N != ""){
+    meta.N <- unique(fread(meta_file.N)[, .(sample_id = sample,
+                                            condition, Donor, tissue)])
+    meta.N$condition <- sub("Cord Blood", "CB", meta.N$condition)
+    meta.N$condition <- gsub("  ", " ", meta.N$condition)
+    meta.N <- meta.N[meta.N$condition%in%c("DP 4+ 8+ 3+", "DP 4+ 8+ 3-", 
+                                           "CD34+ 4- 1+", "CD34+ 4- 1-", "CD34+ 4+")]
+                                           # "g/d 3+ 1+", "g/d 3+ 1-")]
+    # intgroup.dt.N <- get.color.hues.N(meta.N)
+}
+
+```
+
+
+```{r, echo=FALSE, include=FALSE}
+# create meta file with sample.ID, condition, from meta_tall.csv
+meta_file <- "/blackhole/circrna/analyses/VanVlierberghe/merge_T/sample_conditions.csv"
+
+if(meta_file != ""){
+  meta <- unique(fread(meta_file)[, .(sample_id = sample_id,
+                                      condition = fix.name(condition))])
+  # meta$condition <- sub("Cord Blood", "CB", meta$condition)
+  meta$condition <- gsub("  ", " ", meta$condition)
+  meta <- meta[meta$sample_id%in%c(meta.N$sample_id, meta_tall$sample_id),]
+  # intgroup.dt <- get.color.hues(meta)
+}
+
+
+# intgroup.dt$condition.plot <- meta_T$condition.plot[match(intgroup.dt$condition, meta_T$condition)]
+meta <- merge(meta, meta_tall, by="sample_id", all.x=T)
+meta <- merge(meta, meta.N, by="sample_id", all.x=T)
+meta <- meta[order(meta$condition.y, decreasing = T),]
+meta$condition <- c(meta$condition.y[1:nrow(meta_tall)], meta$condition[(nrow(meta_tall)+1):nrow(meta)])
+meta$sample_id3 <-  c(meta$sample_id3[1:nrow(meta_tall)], meta$sample_id[(nrow(meta_tall)+1):nrow(meta)])
+meta$sample_id <- gsub("-","_",meta$sample_id)
+meta <- meta %>% dplyr::select(sample_id, sample_id3, condition.x, condition) %>% dplyr::rename(condition.f=condition.x) 
+meta$groups <- c(rep("T-ALL", 25), rep("Thymocyte", nrow(meta.N)))
+meta$group.f <- sub("-", "_", meta$group)
+colData <- data.frame(meta, 
+                      row.names = "sample_id")
+
+colData$groups2.f <- "T_ALL"
+colData$groups2.f[which(colData$condition.f%in%c("CD34p4p","CD34p4_1p","CD34p4_1_"))] <- "CD34"
+colData$groups2.f[which(colData$condition.f%in%c("DP4p8p3_","DP4p8p3p"))] <- "DP"
+
+colData$group2 <- colData$groups2.f
+colData$group2[which(colData$groups2.f%in%c("CD34"))] <- "CD34+"
+colData$group2[which(colData$groups2.f%in%c("T_ALL"))] <- "T-ALL"
+
+
+colData$condition.f <- factor(colData$condition.f)
+colData$condition <- factor(colData$condition)
+colData$groups2.f <- factor(colData$groups2.f)
+colData$group.f <- factor(colData$group.f)
+colData$group2 <- factor(colData$group2)
+
+write.csv(meta, "/blackhole/alessia/GLMM_article/data/meta_TALL.csv")
+```
+
+## DM1 (Christine Voellenkle et al. 2019)
+
+Keep circRNAs with more than 2 counts in more than 2 samples.
+A dataset is composed by samples from 5 normal and 25 DM1 samples.
+
+```{r include=FALSE}
+
+## function to get count matrix for each detection methods
+get.method.count.matrix <- function(method, x){
+  as.matrix(dcast(data = x[V2 == method],
+                  formula = circRNA_ID ~ sampleID,
+                  value.var = "V6", fill = 0,
+                  fun.aggregate = sum),
+            rownames = "circRNA_ID")
+}
+
+## import data
+if(!file.exists("/blackhole/alessia/GLMM_article/data/DM1Data_list.RData")){
+  
+  colClasses <- c("factor", "factor", "character", "integer", "integer", 
+                "integer", "factor", "character", "character")
+  V9pattern <- '.*gene_id "([^"]*)".*transcript_id "([^"]*)".*'
+  V9newCols <- c("gene_id", "transcript_id")
+  ## load circRNA data
+  circrnas.gtf <- fread("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/DM1/circular_expression/circRNA_collection/circrnas.gtf", colClasses = colClasses)
+    # unique(rbindlist(lapply(gtf.file.list, fread, data.table = T, 
+    #                                       colClasses = colClasses))) 
+  count.data <- circrnas.gtf[, `:=`(circRNA_ID = paste0(V1, ":", V4, "-", V5),
+                                    sampleID = gsub("-", "_", sub('.*sample_id "([^"]+)".*', "\\1",
+                                                                                V9)))]
+  
+  get.method.count.matrix <- function(method, x){
+    as.matrix(dcast(data = x[V2 == method],
+                    formula = circRNA_ID ~ sampleID,
+                    value.var = "V6", fill = 0,
+                    fun.aggregate = sum),
+              rownames = "circRNA_ID")
+  }
+
+  # list of count matrices foreach methdos
+  DM1Data_list <- list()
+  for(i in 1:(length(methods))){
+    cat("method:",methods[i],"\n")
+    # Keep bodysite
+    m = dcast(data = count.data[V2 == methods[i]],
+                  formula = circRNA_ID ~ sampleID,
+                  value.var = "V6", 
+                  fill = 0, fun.aggregate = sum)
+    ps <- as.matrix(m[,-1])
+    rownames(ps) <- m$circRNA_ID
+    # Keep one sample for each Random Subject IDentifier
+    ps <- ps[rowSums(ps>=2)>=1,]
+    DM1Data_list[[i]] <- ps
+    names(DM1Data_list)[i] <- methods[i]
+  }
+  
+  save(DM1Data_list, file = "/blackhole/alessia/GLMM_article/data/DM1Data_list.RData")
+} else load("/blackhole/alessia/GLMM_article/data/DM1Data_list.RData")
+
+```
+
+```{r, include=FALSE}
+fix.name <- function(x){
+  gsub(pattern = " ", replacement = "", 
+       sub("^([0-9].*)", "X\\1",
+           sub("C$", "",
+                gsub("^X", "",
+                    gsub(pattern = "-|/", replacement = "_", 
+                        gsub("\\+", "p", x))))))
+}
+
+```
+
+
+```{r DM1_meta, echo=FALSE, include=FALSE}
+library(stringr)
+basedir.dm1 <- "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/DM1"
+meta_file_dm1 <- file.path(basedir.dm1, "meta_DM1.csv")
+# create meta file with sample.ID, condition, from meta_tall.csv
+if(meta_file_dm1 != ""){
+ meta_dm1 <- unique(fread(meta_file_dm1))[, .(sample_id = sample,
+               condition = ifelse(disease_class=="myotonic dystrophy type 1", "DM1","Normal"))]
+}
+meta_dm1 = meta_dm1[order(meta_dm1$sample_id),][seq(1,nrow(meta_dm1), by = 2),]     # for odd rows
+write.csv(meta_dm1, "/blackhole/alessia/GLMM_article/data/meta_DM1.csv")
+
+```
+
+## ALZ and normal counterpart Data
+
+Keep circRNAs with more than 2 counts in more than 1 samples.
+A dataset is composed by samples from 7 normal and 8 tumor samples.
+
+```{r include=FALSE}
+## import data
+if(!file.exists("/blackhole/alessia/GLMM_article/data/ALZData_list.RData")){
+  
+  colClasses <- c("factor", "factor", "character", "integer", "integer", 
+                "integer", "factor", "character", "character")
+  V9pattern <- '.*gene_id "([^"]*)".*transcript_id "([^"]*)".*'
+  V9newCols <- c("gene_id", "transcript_id")
+  ## load circRNA data
+  circrnas.gtf <- fread("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/ALZ/circular_expression/circrna_collection/circrnas.gtf", colClasses = colClasses)
+    # unique(rbindlist(lapply(gtf.file.list, fread, data.table = T, 
+    #                                       colClasses = colClasses))) 
+  count.data <- circrnas.gtf[, `:=`(circRNA_ID = paste0(V1, ":", V4, "-", V5),
+                                    sampleID = gsub("-", "_", sub('.*sample_id "([^"]+)".*', "\\1",
+                                                                                V9)))]
+  
+  get.method.count.matrix <- function(method, x){
+    as.matrix(dcast(data = x[V2 == method],
+                    formula = circRNA_ID ~ sampleID,
+                    value.var = "V6", fill = 0,
+                    fun.aggregate = sum),
+              rownames = "circRNA_ID")
+  }
+
+  # list of count matrices foreach methdos
+  ALZData_list <- list()
+  for(i in 1:(length(methods_det))){
+    cat("method:",methods_det[i],"\n")
+    # Keep bodysite
+    m = dcast(data = count.data[V2 == methods_det[i]],
+                  formula = circRNA_ID ~ sampleID,
+                  value.var = "V6", 
+                  fill = 0, fun.aggregate = sum)
+    ps <- as.matrix(m[,-1])
+    rownames(ps) <- m$circRNA_ID
+    # Keep one sample for each Random Subject IDentifier
+    ps <- ps[rowSums(ps>=2)>=1,]
+    ALZData_list[[i]] <- ps
+    names(ALZData_list)[i] <- methods_det[i]
+  }
+  
+  
+  save(ALZData_list, file = "/blackhole/alessia/GLMM_article/data/ALZData_list.RData")
+} else load("/blackhole/alessia/CircModel/data/ALZData_list.RData")
+
+```
+
+```{r, include=FALSE}
+fix.name <- function(x){
+  gsub(pattern = " ", replacement = "", 
+       sub("^([0-9].*)", "X\\1",
+           sub("C$", "",
+                gsub("^X", "",
+                    gsub(pattern = "-|/", replacement = "_", 
+                        gsub("\\+", "p", x))))))
+}
+
+```
+
+
+```{r IPF_meta, echo=FALSE, include=FALSE}
+meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/ALZ/meta_alz.csv")
+meta.data = meta.data[1:17,]     # for odd rows
+
+coldata <- data.frame(condition = meta.data$condition,
+                     group = ifelse(meta.data$condition=="control_brain", "normal", "ALZ"),
+                     sample = meta.data$sample,
+                     row.names = meta.data$sample)
+coldata$condition <- factor(coldata$condition)
+coldata$group <- factor(coldata$group)
+coldata$sample <- as.character(coldata$sample)
+coldata
+write.csv(coldata, "/blackhole/alessia/GLMM_article/data/meta_alz.csv")
+
+
+```
+
+## IPF and normal counterpart Data (Nance et al.)
+
+Keep circRNAs with more than 2 counts in more than 1 samples.
+A dataset is composed by samples from 7 normal and 8 tumor samples.
+
+```{r include=FALSE}
+## import data
+if(!file.exists("/blackhole/alessia/CircModel/data/IPFData_list.RData")){
+  
+  colClasses <- c("factor", "factor", "character", "integer", "integer", 
+                "integer", "factor", "character", "character")
+  V9pattern <- '.*gene_id "([^"]*)".*transcript_id "([^"]*)".*'
+  V9newCols <- c("gene_id", "transcript_id")
+  ## load circRNA data
+  circrnas.gtf <- fread("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses/circular_expression/circRNA_collection/circrnas.gtf", colClasses = colClasses)
+    # unique(rbindlist(lapply(gtf.file.list, fread, data.table = T, 
+    #                                       colClasses = colClasses))) 
+  count.data <- circrnas.gtf[, `:=`(circRNA_ID = paste0(V1, ":", V4, "-", V5),
+                                    sampleID = gsub("-", "_", sub('.*sample_id "([^"]+)".*', "\\1",
+                                                                                V9)))]
+  
+  get.method.count.matrix <- function(method, x){
+    as.matrix(dcast(data = x[V2 == method],
+                    formula = circRNA_ID ~ sampleID,
+                    value.var = "V6", fill = 0,
+                    fun.aggregate = sum),
+              rownames = "circRNA_ID")
+  }
+
+  # list of count matrices foreach methdos
+  IPFData_list <- list()
+  for(i in 1:(length(methods))){
+    cat("method:",methods[i],"\n")
+    # Keep bodysite
+    m = dcast(data = count.data[V2 == methods[i]],
+                  formula = circRNA_ID ~ sampleID,
+                  value.var = "V6", 
+                  fill = 0, fun.aggregate = sum)
+    ps <- as.matrix(m[,-1])
+    rownames(ps) <- m$circRNA_ID
+    # Keep one sample for each Random Subject IDentifier
+    ps <- ps[rowSums(ps>=2)>=1,]
+    IPFData_list[[i]] <- ps
+    names(IPFData_list)[i] <- methods[i]
+  }
+  
+  count.data.file <- "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses/circular_expression/circRNA_collection/ccp_counts/bks.counts.union.intersected.csv"
+  count.data <- fread(count.data.file)
+  count.data$circ_id = paste0(count.data$chr, ":", count.data$start+1, "-", count.data$end)
+  ps.ccp2 <- as.matrix(dcast(data = count.data, formula = circ_id~sample_id, fill = 0,value.var = "read.count"),
+                       rownames = "circ_id")
+  # Keep one sample for each Random Subject IDentifier
+  ps.ccp2 <- ps.ccp2[rowSums(ps.ccp2>=2)>=1,]
+  colnames(ps.ccp2) <- gsub("-", "_", colnames(ps.ccp2))
+  IPFData_list[["ccp2"]] <- ceiling(ps.ccp2)
+  save(IPFData_list, file = "/blackhole/alessia/CircModel/data/IPFData_list.RData")
+} else load("/blackhole/alessia/CircModel/data/IPFData_list.RData")
+
+```
+
+```{r, include=FALSE}
+fix.name <- function(x){
+  gsub(pattern = " ", replacement = "", 
+       sub("^([0-9].*)", "X\\1",
+           sub("C$", "",
+                gsub("^X", "",
+                    gsub(pattern = "-|/", replacement = "_", 
+                        gsub("\\+", "p", x))))))
+}
+
+```
+
+
+```{r IPF_meta, echo=FALSE, include=FALSE}
+basedir.ipf <-"/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses"
+meta_file_ipf <- file.path(basedir.ipf, "meta_IPF.csv")
+# create meta file with sample.ID, condition, from meta_tall.csv
+if(meta_file_ipf != ""){
+  meta_ipf <- unique(fread(meta_file_ipf)[, .(sample_id = sample, 
+                                                condition = ifelse(condition=="normal", "normal", "IPF"),
+                                                demo = demographic_group,
+                                                Sex = gender)])
+}
+
+```
+

@@ -1,0 +1,512 @@
+---
+title: 'Type I Error Control'
+author: "Alessia Buratin"
+date: 'Compiled: `r format(Sys.Date(), "%d %B, %Y")`'
+output:
+  html_document:
+    code_folding: hide
+    df_print: kable
+    number_sections: no
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+#TOC {
+  top: 1%;
+  opacity: 0.5;
+}
+#TOC:hover {
+  opacity: 1;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data loading
+
+```{r}
+library(reshape2)
+library(ggplot2)
+library(cowplot)
+library(plyr)
+```
+
+Choose samples in completely random way and create two groups of equal sample size.
+
+### ALZ Data - Mock datasets
+
+```{r}
+## load meta data
+meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/ALZ/meta_alz.csv")
+meta.data = meta.data[1:17,]     # for odd rows
+
+coldata <- DataFrame(condition = meta.data$condition,
+                     group = ifelse(meta.data$condition=="control_brain", "normal", "ALZ"),
+                     sample = meta.data$sample,
+                     row.names = meta.data$sample)
+coldata$condition <- factor(coldata$condition)
+coldata$group <- factor(coldata$group)
+coldata$sample <- as.character(coldata$sample)
+coldata
+
+```
+
+# Differential expression tests
+
+Use "glm_glmm_paired.R" for GLMM-ZINB model and GLM-NB model to evaluate mock datasets. An output is generated for each evaluation. 
+
+```{r}
+# load(file = "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/robustness_glmm/DM1/typeIerrorGLM_50rep.RData")
+# load(file = "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/robustness_glmm/DM1/typeIerrorGLMM_5rep_TMB.RData")
+# load(file = "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/robustness_glmm/DM1/typeIerrorGLMM_5rep_TMB2.RData")
+# load(file = "/blackhole/alessia/CircModel/type_I_error_control/ALZ_typeIerrorGLM_GLMM_10rep.RData")
+load(file = "/blackhole/alessia/CircModel/type_I_error_control/ALZ_typeIerrorGLM_GLMM_10repALL.RData")
+load(file = "/blackhole/alessia/CircModel/type_I_error_control/ALZ_typeIerrorGLM_GLMM_20repALL.RData")
+# load(file = "/blackhole/alessia/CircModel/type_I_error_control/TALL_typeIerrorGLM_GLMM_10repALL.RData")
+dt.list = list()
+dt.list2 = list()
+for(x in 1:length(resMethods)) {dt.list[[x]] = melt(as.data.frame(resMethods[[x]]$rateComp), id = "alpha")}
+for(x in 1:length(resMethods_ALZ_20)) {dt.list2[[x]] = melt(as.data.frame(resMethods_ALZ_20[[x]]$rateComp), id = "alpha")}
+
+# for(x in 1:length(resMethods_TALL)) {dt.list2[[x]] = melt(as.data.frame(resMethods_TALL[[x]]$rateComp), id = "alpha")}
+
+rate = rbind(#cbind(rbindlist(dt.list2, idcol = "rep"), dataset = "TALL"), 
+  cbind(rbindlist(dt.list, idcol = "rep"), dataset = "ALZ"), 
+  cbind(rbindlist(dt.list2, idcol = "rep"), dataset = "ALZ"))
+colnames(rate) = c("Rep","alpha","Method","rate", "Dataset")
+rate_df = as.data.frame(rate)
+table(rate_df$Rep)
+rate_df$Rep = rep(seq(1,30), each = 24)
+rate_df$Method
+# rateGLM = melt(rbindlist(lapply(resMethods, function(x) rbindlist(resRate, idcol = "Rep")), idcol = "DataSet"), id.vars = c("DataSet", "Rep"))
+# colnames(rateGLM) = c("DataSet","Rep","Method","rate")
+# rateGLMM = data.frame(rate = rbind(rbindlist(resRateGLMM)))
+# rateGLMM$Rep = seq(1:nrow(rateGLMM))
+# rateGLMM$Method = "GLMM-ZINB"
+# rateGLMM = dplyr::rename(rateGLMM, rate=rateNBMM_TBM)
+# df <- rateGLMM[rep(seq_len(nrow(rateGLMM)), each = 7), ]
+# df$DataSet <- rep(names(resRate), 10)
+# rate_df = rbind(rateGLM, df)
+```
+
+# Plot
+
+```{r}
+cols <- c(
+  # DEseq
+  brewer.pal(n = 9, "YlOrRd")[c(3,4,5,6)],
+  # edgeR
+  brewer.pal(n = 9, name = "GnBu")[c(5,6,7)],
+  # limma
+  brewer.pal(n = 9, "RdPu")[c(5)],
+  # circMeta
+  brewer.pal(n = 9, "OrRd")[c(8)],
+  # GLMM
+  brewer.pal(n = 9, "BuPu")[c(5)]
+
+)
+
+methods2 <- c("DESeq2",
+             "DESeq2-ZeroInflated",
+             "DESeq2-GamPoi",
+             "DESeq2-ZINB Wave",
+             "edgeR",
+             "edgeR-robust",
+             "edgeR-ZINB Wave",
+             "voom",
+             "circMeta",
+             "GLMM")
+
+names(cols) <- methods2
+renameAtoB <- function(f,a,b) {
+  levels(f)[levels(f) == a] <- b
+  f
+}
+rate_df = rate_df %>% dplyr::filter(!Method%in%c("pvalue", "rateGLMM.adj"))
+# rate_df$Method <- renameAtoB(rate_df$Method, "rateGLMM.adj", "GLMM-adj")
+rate_df$Method<- renameAtoB(rate_df$Method, "rateGLMM", "GLMM")
+rate_df$Method<- renameAtoB(rate_df$Method, "DESeq2-ZI", "DESeq2-ZeroInflated")
+rate_df$Method<- renameAtoB(rate_df$Method, "DESeq2-glmGamPoi", "DESeq2-GamPoi")
+rate_df$Method<- renameAtoB(rate_df$Method, "DESeq2-ZINBWave", "DESeq2-ZINB Wave")
+rate_df$Method<- renameAtoB(rate_df$Method, "edgeR-ZINBWave", "edgeR-ZINB Wave")
+
+
+rate_df$Method<- as.character(rate_df$Method)
+rate_df$alpha = factor(rate_df$alpha)
+rate_df$Method = factor(rate_df$Method)
+rate_df$Rep
+divergence_FDR_mean_melted <- ddply(.data = rate_df,.variables = ~ Dataset + Method + alpha,.fun = function(x){
+  if(x$alpha == "0.1"){
+    sum(abs(x[,"rate"]-0.1))/10
+  } else if(x$alpha == "0.05"){
+    sum(abs(x[,"rate"]-0.05))/10
+  }
+})
+# rank the methods
+ranked_divergence_FDR_mean_melted <- ddply(divergence_FDR_mean_melted,.variables = ~ Dataset + alpha, function(x) rank(x[,"V1"]))
+colnames(ranked_divergence_FDR_mean_melted) <- c("Dataset","alpha",levels(divergence_FDR_mean_melted$Method))
+FDR_divergence_summary <- data.frame(method = levels(divergence_FDR_mean_melted$Method), value = apply(ranked_divergence_FDR_mean_melted[,-(1:2)],2,mean))
+saveRDS(object = FDR_divergence_summary,file = "/blackhole/alessia/CircModel/data/FDR_divergence_summary_ALZ.RDS")
+
+rate_df_005 = rate_df %>% dplyr::filter(alpha=="0.05")
+rate_df_01 = rate_df %>% dplyr::filter(alpha=="0.1")
+
+png(paste0("/blackhole/alessia/CircModel/type_I_error_control/TIE_ALZ_30rep.png"), units = "cm", width = 20, height = 20, res = 100)
+
+ggplot(data = pval_df_FDR_mean,aes(color = Method)) +
+    geom_boxplot(data = pval_df_FDR_mean001,aes(x = "0.01",y = FDR_obs001)) +
+    geom_boxplot(data = pval_df_FDR_mean005,aes(x = "0.05",y = FDR_obs005)) +
+    geom_boxplot(data = pval_df_FDR_mean01,aes(x = "0.1",y = FDR_obs01)) + 
+    #geom_hline(yintercept = c(0.01,0.05,0.1),lty = 2, color = "darkgray") +
+    geom_segment(aes(x = 1-0.5,xend = 1+0.5,y = 0.01,yend = 0.01), color = "red", lty = 2) +
+    geom_segment(aes(x = 2-0.5,xend = 2+0.5,y = 0.05,yend = 0.05), color = "red", lty = 2) +
+    geom_segment(aes(x = 3-0.5,xend = 3+0.5,y = 0.1,yend = 0.1), color = "red", lty = 2) +
+    xlab(expression(Nominal~alpha)) + ylab(expression("Observed"~alpha)) +
+    #ggtitle(label = "False discoveries for each method") + 
+    scale_color_manual(values = cols) +
+    theme_minimal() + 
+    ggtitle(label = paste("False discoveries for",tech,"stool samples"),subtitle = "Raw p-values") +
+    theme(legend.position = "none")
+
+ggplot(data = rate_df, aes( color = Method)) +
+    geom_boxplot(data = rate_df, aes(x = fct_reorder(Method,rate, .desc=FALSE), y = rate)) +
+    # geom_boxplot(data = pval_df_FDR_mean005,aes(x = "0.05",y = FDR_obs005)) +
+    # geom_boxplot(data = pval_df_FDR_mean01,aes(x = "0.1",y = FDR_obs01)) + 
+    geom_hline(yintercept = c(0.01,0.05,0.1),lty = 2, color = "darkgray") +
+    # geom_segment(aes(x = 1-0.5,xend = 1+0.5,y = 0.1,yend = 0.1), color = "red", lty = 2) +
+    # geom_segment(aes(x = 2-0.5,xend = 2+0.5,y = 0.05,yend = 0.05), color = "red", lty = 2) +
+    # geom_segment(aes(x = 3-0.5,xend = 3+0.5,y = 0.1,yend = 0.1), color = "red", lty = 2) +
+    facet_wrap(Dataset ~ alpha) + 
+    xlab(expression(Nominal~alpha)) + ylab(expression("Observed"~alpha)) +
+    #ggtitle(label = "False discoveries for each method") + 
+    scale_color_manual(values = cols) +
+    theme_minimal() + 
+    ggtitle(label = paste("False discoveries for ALZ data samples"),subtitle = "Raw p-values") +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 15),
+          axis.title = element_text(size=14,face="bold"),
+          # axis.text.y.left = element_text(size = 11),
+          title=element_text(size=14),
+          strip.text.x = element_text(size = 14))
+dev.off()
+
+```
+
+
+# Plot
+
+```{r}
+pval_df_list = list(ALZ = resMethods, TALL = resMethods_TALL)
+produce_pval_df <- function(ps_fitted_list){
+  pval_df_list <- lapply(X = ps_fitted_list,FUN = function(Comparison){
+    ldply(Comparison,function(method){
+      data.frame(pval = method$pValMat[,1])
+    },.id = "Method")
+  }) 
+  
+  pval_df <- ldply(pval_df_list, .id = "DataSet")
+  pval_df$Method <- factor(pval_df$Method,levels = c("DESeq2_poscounts",
+                                                     "DESeq2_TMM",
+                                                     "DESeq2_poscounts_zinbwave",
+                                                     "edgeR_TMM_standard",
+                                                     "edgeR_poscounts_standard",
+                                                     "edgeR_TMM_robustDisp",
+                                                     "edgeR_TMM_zinbwave",
+                                                     "limma_voom_TMM",
+                                                     "limma_voom_TMM_zinbwave",
+                                                     "ALDEx2",
+                                                     "mgsZig_CSS",
+                                                     "corncob_LRT",
+                                                     "corncob_wald",
+                                                     "MAST",
+                                                     "seurat_wilcoxon",
+                                                     "scde"),ordered = TRUE)
+  
+  pval_df_FDR <- ddply(.data = pval_df,.variables = ~ Comparison + Method,.fun = function(x){
+    x$FDR_obs001 <- sum(x$pval<0.01,na.rm = TRUE)/length(x$pval[!is.na(x$pval)])
+    x$FDR_obs005 <- sum(x$pval<0.05,na.rm = TRUE)/length(x$pval[!is.na(x$pval)])
+    x$FDR_obs01 <- sum(x$pval<0.1,na.rm = TRUE)/length(x$pval[!is.na(x$pval)])
+    return(x)
+  })
+  pval_df_FDR_mean <- ddply(.data = pval_df_FDR,.variables = ~ Comparison + Method,.fun = function(x){
+    colMeans(x[,4:6])
+  })
+  
+  # Create data frame for empirical and theoretical p-values
+  pval_df_qq <- suppressWarnings(ddply(.data = pval_df,.variables = ~ Comparison + Method,.fun = function(x){
+    x <- x[order(x$pval),]
+    x$pval_theorical[!is.na(x$pval)] <- (1:(sum(!is.na(x$pval))))/(sum(!is.na(x$pval)))
+    x$pval_theorical_rounded[!is.na(x$pval)] <- round((1:(sum(!is.na(x$pval))))/(sum(!is.na(x$pval))),digits = 2)
+    x$KS <- ks.test(x = x$pval_theorical[!is.na(x$pval)],y = x$pval[!is.na(x$pval)])$statistic
+    x$KS_pval <- ks.test(x = x$pval_theorical[!is.na(x$pval)],y = x$pval[!is.na(x$pval)])$p.value
+    #x$KLD <- KLD(x$pval_theorical[!is.na(x$pval)],x$pval[!is.na(x$pval)])$sum.KLD.px.py
+    #x$KLD_0.1 <- KLD(x$pval_theorical[!is.na(x$pval) & x$pval_theorical < 0.1],x$pval[!is.na(x$pval) & x$pval_theorical < 0.1])$sum.KLD.px.py
+    return(x)
+  }))
+  
+  # For each theoretical p-value, the mean of observed one is computed. 
+  pval_df_qq_summary <- ddply(.data = pval_df_qq,.variables = ~ Method + pval_theorical_rounded,.fun = function(x){
+    pval_mean <- mean(x$pval)
+    return(pval_mean)
+  })
+  names(pval_df_qq_summary) <- c("Method","pval_theorical","pval_observed")
+  
+  ### Kolmogorov-Smirnov test
+  
+  pval_df_KS_summary <- ddply(.data = pval_df_qq,.variables = ~ Comparison + Method,.fun = function(x){
+    colMeans(x[,6:7])})
+  
+  return(list(pval_df = pval_df,
+              pval_df_FDR_mean = pval_df_FDR_mean,
+              pval_df_qq_summary = pval_df_qq_summary,
+              pval_df_KS_summary = pval_df_KS_summary))
+}
+plot_FDRcheck <- function(dataset,tech){
+  pval_df_FDR_mean <- dataset$pval_df_FDR_mean
+  
+  ord001 <- order(ddply(pval_df_FDR_mean,.variables = ~ Method, function(x) mean(x$FDR_obs001))$V1)
+  ord005 <- order(ddply(pval_df_FDR_mean,.variables = ~ Method, function(x) mean(x$FDR_obs005))$V1)
+  ord01 <- order(ddply(pval_df_FDR_mean,.variables = ~ Method, function(x) mean(x$FDR_obs01))$V1)
+  
+  pval_df_FDR_mean001 <- pval_df_FDR_mean
+  pval_df_FDR_mean001$Method <- factor(pval_df_FDR_mean$Method, levels = levels(pval_df_FDR_mean$Method)[ord001],ordered = TRUE)
+  
+  pval_df_FDR_mean005 <- pval_df_FDR_mean
+  pval_df_FDR_mean005$Method <- factor(pval_df_FDR_mean$Method, levels = levels(pval_df_FDR_mean$Method)[ord005],ordered = TRUE)
+  
+  pval_df_FDR_mean01 <- pval_df_FDR_mean
+  pval_df_FDR_mean01$Method <- factor(pval_df_FDR_mean$Method, levels = levels(pval_df_FDR_mean$Method)[ord01],ordered = TRUE)
+  
+  g <- ggplot(data = pval_df_FDR_mean,aes(color = Method)) +
+    geom_boxplot(data = pval_df_FDR_mean001,aes(x = "0.01",y = FDR_obs001)) +
+    geom_boxplot(data = pval_df_FDR_mean005,aes(x = "0.05",y = FDR_obs005)) +
+    geom_boxplot(data = pval_df_FDR_mean01,aes(x = "0.1",y = FDR_obs01)) + 
+    #geom_hline(yintercept = c(0.01,0.05,0.1),lty = 2, color = "darkgray") +
+    geom_segment(aes(x = 1-0.5,xend = 1+0.5,y = 0.01,yend = 0.01), color = "red", lty = 2) +
+    geom_segment(aes(x = 2-0.5,xend = 2+0.5,y = 0.05,yend = 0.05), color = "red", lty = 2) +
+    geom_segment(aes(x = 3-0.5,xend = 3+0.5,y = 0.1,yend = 0.1), color = "red", lty = 2) +
+    xlab(expression(Nominal~alpha)) + ylab(expression("Observed"~alpha)) +
+    #ggtitle(label = "False discoveries for each method") + 
+    scale_color_manual(values = cols) +
+    theme_minimal() + 
+    ggtitle(label = paste("False discoveries for",tech,"stool samples"),subtitle = "Raw p-values") +
+    theme(legend.position = "none")
+  return(g)
+}
+plot_qq <- function(dataset,tech,zoom = c(0,1)){
+  pval_df_qq_summary <- dataset$pval_df_qq_summary
+  
+  df_segments <- data.frame(x1 = c(0.01,0,0.05,0,0.1,0),
+                            x2 = c(0.01,0.01,0.05,0.05,0.1,0.1),
+                            y1 = c(0,0.01,0,0.05,0,0.1),
+                            y2 = c(0.01,0.01,0.05,0.05,0.1,0.1))
+  
+  ggplot(data = pval_df_qq_summary,aes(x = pval_theorical, y = pval_observed, color = Method)) +
+    geom_line() +
+    #geom_path(aes(group = Comparison)) +
+    #facet_wrap(~ Method) +
+    geom_abline() +
+    coord_cartesian(xlim = zoom,ylim = zoom) +
+    xlab("Theoretical p-value") + ylab(paste("Observed p-value")) +
+    #xlab("") + ylab(paste("")) +
+    scale_color_manual(values = cols) +
+    theme_minimal() +
+    theme(legend.position = "none") +
+    geom_segment(aes(x = x1,xend = x2,y = y1,yend = y2), color = "red", lty = 2,data = df_segments)
+}
+plot_KS <- function(dataset,tech){
+  pval_df_KS_summary <- dataset$pval_df_KS_summary
+  ord <- order(ddply(pval_df_KS_summary,.variables = ~ Method, function(x) mean(x$KS))$V1)
+  pval_df_KS_summary$Method <- factor(pval_df_KS_summary$Method, levels = levels(pval_df_KS_summary$Method)[ord],ordered = TRUE)
+  ggplot(melt(pval_df_KS_summary[,1:3]),aes(x = Method,y = value, color = Method)) +
+    geom_boxplot() +
+    theme_minimal() +
+    #geom_text(aes(label = round(mean(value),digits = 3)),hjust = -0.1) +
+    coord_flip() +
+    ylab("KS statistics") + xlab("Methods") +
+    ggtitle(label = paste("KS statistics -",tech,"stool samples"),subtitle = "Ordered methods") +
+    scale_x_discrete(limits = rev(levels(pval_df_KS_summary$Method)),position = "top") +
+    scale_color_manual(values = cols) +
+    theme(legend.position = "none",
+          # axis.text.y = element_blank(),
+          panel.spacing = unit(0, "lines"),
+          plot.margin = unit(c(0,0,0,1), "cm"))
+}
+legend_method <- function(dataset, nrow){
+  pval_df_KS_summary <- dataset$pval_df_KS_summary
+  df_method <- data.frame(Method = unique(pval_df_KS_summary$Method),
+                          pos = cumsum(sapply(unique(pval_df_KS_summary$Method),function(x) nchar(as.character(x))+10)))
+  g_methods <- ggplot(df_method,aes(x = Method,y = "1", color = Method)) +
+    theme_minimal() +
+    geom_point(size = 5) +
+    scale_color_manual(values = cols, guide = guide_legend(title = "Methods:",nrow = nrow)) +
+    theme(legend.position = "bottom")
+  return(get_legend(g_methods))
+}
+```
+
+```{r, fig.height=14, fig.width=16}
+if(!file.exists("../data/TIEC_16S_plot.RDS")){
+  dataplot_16S <- produce_pval_df(ps_fitted_list = Stool_16S_mockDA,pval_type = "raw")
+  saveRDS(dataplot_16S,file = "../data/TIEC_16S_plot.RDS")
+} else dataplot_16S <- readRDS("../data/TIEC_16S_plot.RDS")
+if(!file.exists("../data/TIEC_WMS_plot.RDS")){
+  dataplot_WMS <- produce_pval_df(ps_fitted_list = Stool_WMS_mockDA,pval_type = "raw")
+  saveRDS(dataplot_WMS,file = "../data/TIEC_WMS_plot.RDS")
+} else dataplot_WMS <- readRDS("../data/TIEC_WMS_plot.RDS")
+e <- plot_FDRcheck(dataset = dataplot_16S,tech = "16S")
+f <- plot_FDRcheck(dataset = dataplot_WMS,tech = "WMS")
+a1 <- plot_qq(dataset = dataplot_16S,tech = "16S",zoom = c(0,1)) + 
+  ggtitle(label = paste("QQ-plot 16S stool samples"),subtitle = paste("From 0 to 1"))
+a2 <- plot_qq(dataset = dataplot_16S,tech = "16S",zoom = c(0,0.1)) + 
+  ggtitle(label = element_blank(),subtitle = paste("From 0 to 0.1"))
+a <- plot_grid(plotlist = list(a1,a2),nrow = 2,align = "hv")
+c1 <- plot_qq(dataset = dataplot_WMS,tech = "WMS",zoom = c(0,1)) +
+  ggtitle(label = paste("QQ-plot WMS stool samples"),subtitle = paste("From 0 to 1"))
+c2 <- plot_qq(dataset = dataplot_WMS,tech = "WMS",zoom = c(0,0.1)) + 
+  ggtitle(label = element_blank(),subtitle = paste("From 0 to 0.1"))
+c <- plot_grid(plotlist = list(c1,c2),nrow = 2,align = "vh")
+b <- plot_KS(dataset = dataplot_16S,tech = "16S")
+d <- plot_KS(dataset = dataplot_WMS,tech = "WMS")
+ab <- plot_grid(plotlist = list(a,b),ncol = 2,axis = "tb",labels = c("a","b"),rel_widths = c(2,3))
+abe <- plot_grid(plotlist = list(ab,e),nrow = 2,axis = "lr",labels = c("","e"))
+cd <- plot_grid(plotlist = list(c,d),ncol = 2,axis = "tb",labels = c("c","d"),rel_widths = c(2,3))
+cdf <- plot_grid(plotlist = list(cd,f),nrow = 2,axis = "lr",labels = c("","f"))
+abecdf <- plot_grid(abe,cdf,axis = "tb")
+leg <- legend_method(dataset = dataplot_16S, nrow = 3)
+fig <- plot_grid(abecdf,leg,nrow = 2,rel_heights = c(1,0.1))
+fig
+# svg(filename = "../../fig3.svg",width = 16, height = 14)
+# fig
+# dev.off()
+```
+
+# Summary
+
+Average KS statistics and divergence of fraction of false discoveries from nominal values between simulations to rank methods.
+
+```{r, eval=FALSE}
+Stool_WMS <- readRDS(file = "../data/Stool_WMS_mockDA.RDS")
+Stool_16S <- readRDS(file = "../data/Stool_16S_mockDA.RDS")
+### discoveries vs alpha nominal
+pVal_df_list_16S <- lapply(X = Stool_16S,FUN = function(Comparison){
+  ldply(Comparison,function(method){
+    data.frame(pVal = method$pValMat[,1])
+  },.id = "Method")
+})
+pVal_df_list_WMS <- lapply(X = Stool_WMS,FUN = function(Comparison){
+  ldply(Comparison,function(method){
+    data.frame(pVal = method$pValMat[,1])
+  },.id = "Method")
+})
+pVal_df_16S <- ldply(pVal_df_list_16S,function(x) x, .id = "Comparison")
+pVal_df_WMS <- ldply(pVal_df_list_WMS,function(x) x, .id = "Comparison")
+pVal_df_16S$technology <- "16S"
+pVal_df_WMS$technology <- "WMS"
+pVal_df <- rbind(pVal_df_16S,pVal_df_WMS)
+pVal_df$Method <- factor(pVal_df$Method,levels = c("DESeq2_poscounts",
+                                                   "DESeq2_TMM",
+                                                   "DESeq2_poscounts_zinbwave",
+                                                   "edgeR_TMM_standard",
+                                                   "edgeR_poscounts_standard",
+                                                   "edgeR_TMM_robustDisp",
+                                                   "edgeR_TMM_zinbwave",
+                                                   "limma_voom_TMM",
+                                                   "limma_voom_TMM_zinbwave",
+                                                   "ALDEx2",
+                                                   "mgsZig_CSS",
+                                                   "corncob_LRT",
+                                                   "corncob_wald",
+                                                   "MAST",
+                                                   "seurat_wilcoxon",
+                                                   "scde"),ordered = TRUE)
+# Compute fraction of discoveries
+pVal_df_FDR <- ddply(.data = pVal_df,.variables = ~ technology + Comparison + Method,.fun = function(x){
+  x$FDR_obs001 <- sum(x$pVal<0.01,na.rm = TRUE)/length(x$pVal[!is.na(x$pVal)])
+  x$FDR_obs005 <- sum(x$pVal<0.05,na.rm = TRUE)/length(x$pVal[!is.na(x$pVal)])
+  x$FDR_obs01 <- sum(x$pVal<0.1,na.rm = TRUE)/length(x$pVal[!is.na(x$pVal)])
+  return(x)
+})
+# stratified by tech, comparison and method. Compute the mean
+pVal_df_FDR_mean <- ddply(.data = pVal_df_FDR,.variables = ~ technology + Comparison + Method,.fun = function(x){
+  colMeans(x[,5:7])
+})
+# melt the dataset and find the difference between fraction and nominal value
+pVal_df_FDR_mean_melted <- melt(pVal_df_FDR_mean)
+divergence_FDR_mean_melted <- ddply(.data = pVal_df_FDR_mean_melted,.variables = ~ technology + Comparison + Method + variable,.fun = function(x){
+  if(x$variable == "FDR_obs001"){
+    sum(abs(x[,"value"]-0.01))/1000
+  } else if(x$variable == "FDR_obs005"){
+    sum(abs(x[,"value"]-0.05))/1000
+  } else if(x$variable == "FDR_obs01"){
+    sum(abs(x[,"value"]-0.1))/1000
+  }
+})
+# rank the methods
+ranked_divergence_FDR_mean_melted <- ddply(divergence_FDR_mean_melted,.variables = ~ technology + Comparison + variable, function(x) rank(x[,"V1"]))
+colnames(ranked_divergence_FDR_mean_melted) <- c("technology","Comparison","variable",levels(divergence_FDR_mean_melted$Method))
+FDR_divergence_summary <- data.frame(method = levels(divergence_FDR_mean_melted$Method), value = apply(ranked_divergence_FDR_mean_melted[,-(1:3)],2,mean))
+saveRDS(object = FDR_divergence_summary,file = "../data/summary/FDR_divergence_summary.RDS")
+### KS statistics
+# Create a p-value's data frame
+pval_df_list_16S <- lapply(X = Stool_16S,FUN = function(Comparison){
+  ldply(Comparison,function(method){
+    data.frame(pVal = method$pValMat[,1])
+  },.id = "Method")
+}) 
+pval_df_list_WMS <- lapply(X = Stool_WMS,FUN = function(Comparison){
+  ldply(Comparison,function(method){
+    data.frame(pVal = method$pValMat[,1])
+  },.id = "Method")
+}) 
+# Stratify by Comparison
+pval_df_16S <- ldply(pval_df_list_16S,function(x) x, .id = "Comparison")
+pval_df_WMS <- ldply(pval_df_list_WMS,function(x) x, .id = "Comparison")
+pval_df_16S$technology <- "16S"
+pval_df_WMS$technology <- "WMS"
+pval_df <- rbind(pval_df_16S,pval_df_WMS)
+pval_df$Method <- factor(pval_df$Method,levels = c("DESeq2_poscounts",
+                                                   "DESeq2_TMM",
+                                                   "DESeq2_poscounts_zinbwave",
+                                                   "edgeR_TMM_standard",
+                                                   "edgeR_poscounts_standard",
+                                                   "edgeR_TMM_robustDisp",
+                                                   "edgeR_TMM_zinbwave",
+                                                   "limma_voom_TMM",
+                                                   "limma_voom_TMM_zinbwave",
+                                                   "ALDEx2",
+                                                   "mgsZig_CSS",
+                                                   "corncob_LRT",
+                                                   "corncob_wald",
+                                                   "MAST",
+                                                   "seurat_wilcoxon",
+                                                   "scde"),ordered = TRUE)
+# Create data frame for empirical and theoretical p-values
+pval_df_qq <- ddply(.data = pval_df,.variables = ~ technology + Comparison + Method,.fun = function(x){
+  x <- x[order(x$pVal),]
+  x$pVal_theorical[!is.na(x$pVal)] <- (1:(sum(!is.na(x$pVal))))/(sum(!is.na(x$pVal)))
+  x$pVal_theorical_rounded[!is.na(x$pVal)] <- round((1:(sum(!is.na(x$pVal))))/(sum(!is.na(x$pVal))),digits = 2)
+  x$KS <- ks.test(x = x$pVal_theorical[!is.na(x$pVal)],y = x$pVal[!is.na(x$pVal)])$statistic
+  x$KS_pVal <- ks.test(x = x$pVal_theorical[!is.na(x$pVal)],y = x$pVal[!is.na(x$pVal)])$p.value
+  #x$KLD <- KLD(x$pVal_theorical[!is.na(x$pVal)],x$pVal[!is.na(x$pVal)])$sum.KLD.px.py
+  #x$KLD_0.1 <- KLD(x$pVal_theorical[!is.na(x$pVal) & x$pVal_theorical < 0.1],x$pVal[!is.na(x$pVal) & x$pVal_theorical < 0.1])$sum.KLD.px.py
+  return(x)
+})
+pval_df_KS_summary <- ddply(.data = pval_df_qq,.variables = ~ technology + Comparison + Method,.fun = function(x){
+  colMeans(x[,7:8])})
+KS_comp <- ddply(pval_df_KS_summary, ~ technology + Comparison, function(x) rank(x[,4]))
+colnames(KS_comp) <- c("technology","Comparison",levels(pval_df_KS_summary$Method))
+KS_comp_melted <- melt(KS_comp)
+KS_summary <- ddply(KS_comp_melted, ~ variable, function(x) mean(x$value))
+colnames(KS_summary) <- c("method","value")
+saveRDS(object = KS_summary,file = "../data/summary/KS_summary.RDS")
+```
