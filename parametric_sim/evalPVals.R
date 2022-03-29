@@ -124,68 +124,94 @@ df_creator <- function(evals_file, sim_flow_file, out_dir){
   #                                
   #   evals_stats.glmm_df
   # }
+  library(tidyverse)
+
+DT = rbindlist(lapply(evals_noTM, function(x){
+    # x = evals_noTM$`simulation: 1_dataset:findcirc_distribution:NB_sampleSize:5_FPR:0.1_foldEffect:1.5_seed:142180635`
+    rbindlist(lapply(lapply(lapply(x, "[[", "pValMat"), function(x) as.data.frame(x)), setDT, keep.rownames = TRUE),
+              idcol = c("det.method","rn"))
+}), idcol = "ID")
+DT_flow = DT %>%
+    separate(ID, c("Rep", "dataset","distribution","sampleSize","FPR","foldEffect","seed"), "_")
   
-  eval_stats <- ldply(.data = evals_noTM,.fun = function(methods){
-    # methods = evals_noTM$`simulation:30_dataset:GLMM_sampleSize:5_FPR:0.1_foldEffect:1.5`
-    ldply(.data = methods,.fun = function(m){
-      # m = methods
-      evalPVals(resi = as.matrix(m$pValMat), alpha = 0.05, pvalsType = "adjP", rawPvalsType = "adjP")
+minPadj = aggregate(adjP ~ det.method + rn + Rep, DT_flow, function(x) min(x))
+minPadj$Rep = sub(".*:", "", minPadj$Rep)
+res_min_Test = list()
+for(i in unique(minPadj$Rep)){
+  # i=1
+  res_min_Test[[i]] = minPadj %>% dplyr::filter(Rep%in%i) %>% dcast(rn~det.method,value.var="adjP")
+}
+
+eval_stats <- 
+    ldply(.data = res_min_Test,.fun = function(m){
+      # m=res_min_Test$` 1`
+      mat = m[,-1]
+      mat = as.matrix(mat)
+      rownames(mat) = m$rn
+      
+      apply(mat, 2, function(x) {
+        # x=mat[,1]
+        dat = as.data.frame(x)
+        colnames(dat) = "adjP"
+        evalPVals(resi = as.matrix(dat), alpha = 0.05, pvalsType = "adjP", rawPvalsType = "adjP")
     })
   })
+  eval_stats$stats = rep(c("NA","TPs",
+           "DECs",
+           "Sensitivity", 
+           "Specificity", 
+           "FDR", 
+           "AUC"), 30)
   
-  colnames(eval_stats) <- c("method",colnames(eval_stats)[-1])
+  eval_stats = melt(eval_stats, variable_name = "method")
+  eval_stats = dcast(eval_stats, .id + method ~ stats)
+  
+  colnames(eval_stats) <- c("Rep",colnames(eval_stats)[-1])
   nmethods <- length(unique(eval_stats$method))
-  simulation_flow_df <- apply(simulation_flow[1:length(evals_noTM),], 2, 
-                              function(col) sapply(col,function(cell) rep(cell,each = nmethods)))
-  evals_stats_df <- data.frame(eval_stats,simulation_flow_df) 
   
-  evals_stats_df$method <- factor(evals_stats_df$method)
-  evals_stats_df$method <- factor(evals_stats_df$method, levels = levels(evals_stats_df$method), 
+  eval_stats$method <- factor(eval_stats$method)
+  eval_stats$method <- factor(eval_stats$method, levels = levels(eval_stats$method), 
                                 labels = c("DESeq2",
                                            "edgeR-robust",
                                            "voom"
                                            ))
   cat("Computing ROC from pVals","\n")
   
-  eval_ROC <- ldply(.data = evals_noTM,.fun = function(methods){
-    ldply(.data = methods,.fun = function(m){
-      ROC <- AUC::roc(predictions = 1-as.matrix(m$pValMat)[,"adjP"], labels = as.factor(grepl(pattern = "TP", 
-                                                                                              x = rownames(as.matrix(m$pValMat)))))
-      AUC = pROC::roc(as.factor(grepl(pattern = "TP", x = rownames(as.matrix(m$pValMat)))), 1-as.matrix(m$pValMat)[,"adjP"])$auc
-      cbind(fpr = ROC$fpr, tpr = ROC$tpr, auc = AUC)
-    })
-  })
   
-  colnames(eval_ROC) <- c("method",colnames(eval_ROC)[-1])
+  eval_ROC <- 
+    ldply(.data = res_min_Test,.fun = function(m){
+      # m=res_min_Test$` 1`
+      mat = m[,-1]
+      mat = as.matrix(mat)
+      rownames(mat) = m$rn
+      
+      res = apply(mat, 2, function(x) {
+        # x=mat[,1]
+        dat = as.data.frame(x)
+        colnames(dat) = "adjP"
+
+      ROC <- AUC::roc(predictions = 1-as.matrix(dat)[,"adjP"], labels = as.factor(grepl(pattern = "TP", 
+                                                                                              x = rownames(as.matrix(dat)))))
+      AUC = pROC::roc(as.factor(grepl(pattern = "TP", x = rownames(as.matrix(dat)))), 1-as.matrix(dat)[,"adjP"])$auc
+      cbind(fpr = ROC$fpr, tpr = ROC$tpr, auc = AUC)
+      })
+      rbindlist(lapply(res, function(x) as.data.frame(x)),idcol = "method")
+    })
+
+  
+  colnames(eval_ROC) <- c("Rep",colnames(eval_ROC)[-1])
   eval_ROC$method <- factor(eval_ROC$method)
   eval_ROC$method <- factor(eval_ROC$method, levels = levels(eval_ROC$method), 
                                 labels = c("DESeq2",
                                            "edgeR-robust",
                                            "voom"))
-  lengths_ROC <- ldply(.data = evals_noTM,.fun = function(methods){
-    sum(ldply(.data = methods,.fun = function(m){
-      ROC <- AUC::roc(predictions = 1-as.matrix(m$pValMat)[,"adjP"], labels = as.factor(grepl(pattern = "TP",
-                                                                                              x = rownames(as.matrix(m$pValMat)))))
-      return(length(ROC$tpr))
-    })$V1)
-  })
-  simulation_flow_ROC_df <- apply(simulation_flow[1:length(evals_noTM),], 2, 
-                                  function(col) unlist(mapply(col,lengths_ROC$V1,FUN = function(cell,times) rep(x = cell,times)),
-                                                       use.names = FALSE))
-  evals_ROC_df <- cbind(eval_ROC, simulation_flow_ROC_df)
-  evals_ROC_df$dataset = factor(evals_ROC_df$dataset)
   
+  evals_ROC_df <- eval_ROC
+
   cat("Summarizing ROC values","\n")
   evals_ROC_summary_df <- ddply(.data = evals_ROC_df[,-ncol(evals_ROC_df)],.variables = ~ 
-                                  method + 
-                                  dataset + 
-                                  #distribution + 
-                                  sampleSize +
-                                  simulation +
-                                  FPR +
-                                  foldEffect, 
-                                  # compensation + 
-                                  # sparsityEffect,
+                                  method, 
+                                
                                 .fun = function(x){
                                     support <- seq(0,1,length.out = 101)
                                     fpr_tpr <- data.frame(fpr = 0, tpr = 0)
@@ -201,16 +227,7 @@ df_creator <- function(evals_file, sim_flow_file, out_dir){
                                     return(fpr_tpr)
                                   })
   evals_ROC_summary_mean_df <- ddply(.data = evals_ROC_summary_df,.variables = ~ 
-                                       method + 
-                                       dataset + 
-                                       #distribution + 
-                                       sampleSize +
-                                       simulation +
-                                       FPR +
-                                       foldEffect + 
-                                       fpr,
-                                     # compensation + 
-                                     # sparsityEffect,
+                                       method,
                                      .fun = function(x){
                                          tpr = mean(x$tpr)
                                          se = sqrt(var(x$tpr))
@@ -241,12 +258,8 @@ evals_ROC_df$method <- factor(evals_ROC_df$method,
                                         
                                          "voom"),
                               ordered = T)
-evals_ROC_df$dataset = factor(evals_ROC_df$dataset)
-detection.labels <- c("CIRI", "DCC",  "findcirc", "circExplorer")
 
-names(detection.labels) <- levels(evals_ROC_df$dataset)
-levels(evals_ROC_df$method)
-evals_AUC_ROC_mean <- ddply(evals_ROC_df, ~ dataset + method, function(x) 1-mean(x[,"auc"]))
+evals_AUC_ROC_mean <- ddply(evals_ROC_df, ~ method, function(x) 1-mean(x[,"auc"]))
 rank_all <- ddply(evals_AUC_ROC_mean, ~ dataset , function(x) rank(x[,"V1"]))
 mean_all <- ddply(evals_AUC_ROC_mean, ~ dataset , function(x) x[,"V1"])
 colnames(rank_all)[2:ncol(rank_all)] <- levels(evals_ROC_df$method)

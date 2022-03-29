@@ -80,6 +80,7 @@ dim(simulation_flow.glmm)
 df_creator <- function(evals_file, sim_flow_file, out_dir){
   cat("Reading evals","\n")
   evals = readRDS("/blackhole/alessia/GLMM_article/parametric_sim/ALZ_glmm_parametricsimulations_power.RDS")
+
   names(evals) = apply(simulation_flow.glmm, 1, function(sim) paste(colnames(simulation_flow.glmm),
                                                                                  sim,
                                                                                  sep = ":",
@@ -189,10 +190,7 @@ evals_ROC_df$method <- factor(evals_ROC_df$method,
                                          "GLMM",
                                          "voom"),
                               ordered = T)
-detection.labels <- c("circExplorer2",
-                      "CIRI", "DCC",  "findcirc","GLMM")
-evals_ROC_df$dataset = factor(evals_ROC_df$dataset)
-names(detection.labels) <- levels(evals_ROC_df$dataset)
+
 
 library(RColorBrewer)
 cols <- c(
@@ -216,24 +214,24 @@ methods2 <- c("GLMM",
               "voom")
 names(cols) <- methods2
 
-png(file = "/blackhole/alessia/CircModel/parametric_sim/AUC_ALZSim_glmm.png",
-     width = 12, height = 10, units = "in", res = 300)
+png(file = "/blackhole/alessia/GLMM_article/parametric_sim/AUC_ALZSim_glmm.png",
+     width = 8, height = 8, units = "in", res = 300)
 ggplot(evals_ROC_df, aes(x=method, y = auc, color = method)) + 
   geom_boxplot() + 
   ylab("AUC") +
   xlab("") +
   labs(fill = "DE methods") +
   scale_color_manual(values = cols) +
-  facet_wrap( ~ dataset) + #,
-             # labeller = labeller(dataset = detection.labels)) +
+  theme_bw() + 
   theme(axis.text.x = element_text(face = "bold", color = "black", 
-                                   size = 8.5, angle = 45, vjust=.97, hjust=1.1),
-        strip.text.x = element_text(face = "bold.italic", size = 9),
-        strip.text.y = element_text(face = "bold.italic", size = 9), #angle = 75),
+                                   size = 14, angle = 45, vjust=.97, hjust=1.1),
+        axis.text.y = element_text(size = 14),
+        strip.text.x = element_text(face = "bold.italic", size = 14),
+        strip.text.y = element_text(face = "bold.italic", size = 14), #angle = 75),
         strip.background = element_rect(#fill = "lightblue",
           colour = "grey", size = 1),
-        title = element_text(size = 12)) +
-  ggtitle("AUC across sample size - Dataset ALZ\n(n.sim,30; ZINB distr.; FC,1.5; TPR,0.1)")
+        title = element_text(size = 14)) +
+  ggtitle("AUC across sample size - Dataset ALZ\n(n.sim,30; NB distr.; FC,1.5; TPR,0.1)")
 dev.off()
 
 evals_stats_met_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_stats_glm_ALZ_df.csv")
@@ -249,31 +247,31 @@ evals_stats_df$method <- factor(evals_stats_df$method,
                                           "voom"),
                                ordered = T)
 p <- evals_stats_df %>% 
-  dplyr::group_by(method, dataset) %>% 
+  dplyr::group_by(method) %>% 
   dplyr::summarise(sens.mean = mean(Sensitivity),
             spec.mean  = mean(Specificity)) %>% 
   ggplot(aes(y=sens.mean, x=1-spec.mean, color=method))
 
-png(file = "/blackhole/alessia/CircModel/parametric_sim/sens_spec_ALZ_glmm.png",
-     width = 10, height = 10, units = "in", res = 300)
+png(file = "/blackhole/alessia/GLMM_article/parametric_sim/sens_spec_ALZ_glmm.png",
+     width = 8, height = 8, units = "in", res = 300)
 p + geom_point(size = 3) + 
   theme_bw() + 
-  facet_wrap( ~ dataset) +
-  # scale_shape_manual(values=1:5) +
   scale_color_manual(values = cols) +
   ylab("Sensitivity") +
   xlab("1 - specificity (false positive rate)") + 
   # coord_cartesian(xlim=c(-.003,.035)) + 
   geom_vline(xintercept=.05) +
-  theme(legend.position = "bottom",
-        axis.text.x = element_text(#face = "bold", color = "#993333",
-                                   size = 9, angle = 45, vjust=.9, hjust=0.8),
-        strip.text.x = element_text(face = "bold.italic", size = 9),
-        strip.text.y = element_text(face = "bold.italic", size = 9), #angle = 75),
+  theme_bw() + 
+  theme(axis.text.x = element_text(face = "bold", color = "black", 
+                                   size = 14, angle = 45, vjust=.97, hjust=1.1),
+        axis.text.y = element_text(size = 14),
+        strip.text.x = element_text(face = "bold.italic", size = 14),
+        strip.text.y = element_text(face = "bold.italic", size = 14), #angle = 75),
         strip.background = element_rect(#fill = "lightblue",
-          colour = "grey", size = 1)) +
+          colour = "grey", size = 1),
+        title = element_text(size = 14)) +
   guides(shape=guide_legend(nrow=2,byrow=TRUE)) + 
-  ggtitle("Power across sample size - Dataset ALZ\n(n.sim,30; ZINB distr.; FC,1.5; TPR,0.1)")
+  ggtitle("Power across sample size - Dataset ALZ\n(n.sim,30; NB distr.; FC,1.5; TPR,0.1)")
   # scale_x_continuous(breaks=c(0,.1))
 dev.off()
 
