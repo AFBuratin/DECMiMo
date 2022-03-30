@@ -100,6 +100,7 @@ runDESeq2.apeglm <- function(e, retDDS=FALSE,w=NULL) {
 
 
 runEdgeR <- function(e,w=NULL) {
+  library(edgeR)
   design <- model.matrix(~ pData(e)$condition)
   dgel <- DGEList(exprs(e))
   dgel <- calcNormFactors(dgel)
@@ -122,6 +123,7 @@ runEdgeR <- function(e,w=NULL) {
 }
 
 runEdgeRRobust <- function(e,w=NULL) {
+  library(edgeR)
   design <- model.matrix(~ pData(e)$condition)
   dgel <- DGEList(exprs(e))
   dgel <- calcNormFactors(dgel)
@@ -165,6 +167,7 @@ edgeR_zinbweights <- function(e, w){
 }# END: edgeR - ZINBWaVE weights
 
 runVoom <- function(e,w=NULL) {
+  library(edgeR)
   design <- model.matrix(~ condition, pData(e))
   dgel <- DGEList(exprs(e))
   dgel <- calcNormFactors(dgel)

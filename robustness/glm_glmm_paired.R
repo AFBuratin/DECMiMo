@@ -418,7 +418,7 @@ resGLM_ALZ_30rep <- future_lapply(X = e, FUN =  function(x) {
   res = bplapply(1:30, function(i) {   
     
     cat(i," ")
-    # i = 11
+    # i = 8
     
     testSet <- as.character(randomSubsets[i,c(1:6)])
     heldOutSet <- as.character(randomSubsets[i,-c(1:6)])
@@ -608,7 +608,8 @@ res_GLM_min = lapply(list(resTes, resHeldout), function(res){
   minPadj = aggregate(value ~ variable + rn + Rep, DT, function(x) min(x))
   return(minPadj)
 })
-  
+names(res_GLM_min) = c("resTest", "resHeldout")
+
 res_GLM_min_rep_Test = list()
 for(i in 1:30){
   # i=1
@@ -630,9 +631,8 @@ for(r in 1:30){
   res_GLM_GLMM_rep_Heldout[[r]] = merge(res_GLM_min_rep_Heldout[[r]], resHeldoutGLMM[[r]], by="rn",all=T)
 }
 #save(res_GLM_GLMM_rep_Test, res_GLM_GLMM_rep_Heldout, file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM.RData")
-names(res_GLM_min) = c("resTest", "resHeldout")
-#write.csv(minPadj, "/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_ALZ.csv")
-res_GLM_min = read.csv("/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_ALZ.csv")
+# write.csv(minPadj, "/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_ALZ.csv")
+# res_GLM_min = read.csv("/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_ALZ.csv")
 load("/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLMM_30rep.RData")
 
 res_GLMM = lapply(list(resTestGLMM, resHeldoutGLMM), function(res){
@@ -642,7 +642,7 @@ res_GLMM = lapply(list(resTestGLMM, resHeldoutGLMM), function(res){
 names(res_GLMM) = c("resTest", "resHeldout")
 
 res.concordance_30rep = rbind.fill(rbindlist(res_GLMM, idcol = "result"), rbindlist(res_GLM_min, idcol = "result"))
-write.csv(res.concordance_30rep, "/blackhole/alessia/GLMM_article/robustness/GLM_GLMM_Padj_30Rep_ALZ.csv")
+# write.csv(res.concordance_30rep, "/blackhole/alessia/GLMM_article/robustness/GLM_GLMM_Padj_30Rep_ALZ.csv")
 
 
 lfc_GLM_min = lapply(list(lfcTest, lfcHeldout), function(res){
@@ -683,7 +683,8 @@ lfc_GLM_GLMM_rep_Heldout = lapply(lfc_GLM_GLMM_rep_Heldout, function(x) {
   names(x)=c("rn","DESeq2", "edgeR-robust","voom","GLMM")
 return(x)
 })
-#save(lfc_GLM_GLMM_rep_Test, lfc_GLM_GLMM_rep_Heldout, file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM_lfc.RData")
+save(lfc_GLM_GLMM_rep_Test, lfc_GLM_GLMM_rep_Heldout,
+file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM_lfc.RData")
 
 # type I error control -------------
 
