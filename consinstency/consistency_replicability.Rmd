@@ -81,6 +81,12 @@ renameAtoB <- function(f,a,b) {
 ### data
 
 ```{r}
+Dataset = "IPF"
+load(file = "/blackhole/alessia/GLMM_article/robustness/robustnessIPF_30rep_GLM_GLMM.RData")
+load(file = "/blackhole/alessia/GLMM_article/robustness/robustnessIPF_30rep_GLM_GLMM_lfc.RData")
+
+nreps = 30
+
 Dataset = "ALZ"
 load(file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM.RData")
 load(file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM_lfc.RData")
@@ -111,23 +117,24 @@ ps_fitted$Heldout$lfc <- lfc_GLM_GLMM_rep_Heldout
 maxrank = 1000
 
 conc.witbet.ALZ <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
-# conc.witbet.IPF <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
+conc.witbet.IPF <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
 # conc.witbet.TALL <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
-# write.csv(conc.witbet, "/blackhole/alessia/CircModel/consinstency/conc_witbet_IPF.csv")
+# write.csv(conc.witbet.IPF, "/blackhole/alessia/GLMM_article/consinstency/conc_witbet_IPF_30.csv")
 # write.csv(conc.witbet.ALZ, "/blackhole/alessia/GLMM_article/consinstency/conc_witbet_ALZ_30.csv")
 # write.csv(conc.witbet.TALL, "/blackhole/alessia/CircModel/consinstency/conc_witbet_TALL_30.csv")
 
 conc.betglmm.ALZ <- compute_concordance_withGLMM(ps_fitted_list = ps_fitted, maxrank = maxrank)
-# conc.betglmm.TALL <- compute_concordance_withGLMM(ps_fitted_list = ps_fitted, maxrank = maxrank)
-# write.csv(conc.betglmm, "/blackhole/alessia/CircModel/consinstency/conc_betGLMM_IPF.csv")
-write.csv(conc.betglmm.ALZ, "/blackhole/alessia/GLMM_article/consinstency/conc_betGLMMadj_ALZ_30.csv")
-# write.csv(conc.betglmm.TALL, "/blackhole/alessia/CircModel/consinstency/conc_betGLMMadj_TALL_30.csv")
+conc.betglmm.IPF <- compute_concordance_withGLMM(ps_fitted_list = ps_fitted, maxrank = maxrank)
+# write.csv(conc.betglmm.ALZ, "/blackhole/alessia/GLMM_article/consinstency/conc_betGLMMadj_ALZ_30.csv")
+# write.csv(conc.betglmm.IPF, "/blackhole/alessia/GLMM_article/consinstency/conc_betGLMMadj_IPF_30.csv")
 
 
 conc.witbet.ALZ <- read.csv("/blackhole/alessia/GLMM_article/consinstency/conc_witbet_ALZ_30.csv")
+conc.witbet.IPF <- read.csv("/blackhole/alessia/GLMM_article/consinstency/conc_witbet_IPF_30.csv")
+
 conc.betglmm.ALZ <- read.csv("/blackhole/alessia/GLMM_article/consinstency/conc_betGLMMadj_ALZ_30.csv")
 
-concordance_df_summary <- suppressWarnings(ddply(conc.witbet.ALZ, ~ rank + method1 + method2, function(x) colMeans(x[,c("concordance", "nfeatures")])))
+concordance_df_summary <- suppressWarnings(ddply(conc.witbet.IPF, ~ rank + method1 + method2, function(x) colMeans(x[,c("concordance", "nfeatures")])))
 
 AUC_AOC_between_methods <- suppressWarnings(ddply(concordance_df_summary, ~ method1 + method2, function(x) AucAocFun(cVals = x$concordance[x$rank <= 1000], nfeatures = mean(x$nfeatures[x$rank <= 1000]), threshold = 1000)))
 
@@ -148,11 +155,12 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
     forlegend$method1 <- factor(forlegend$method1)
 
     g_legend_dendrogram <- get_legend(ggplot() +
-                                        geom_point(data=forlegend, aes(x = method1, y = 1, color = method1),size = 4) +
+                                        geom_point(data=forlegend, aes(x = method1, y = 1, color = method1),size = 5) +
                                         scale_color_manual(values = cols) +
                                         theme_minimal() +
-                                        theme(legend.position = "bottom") +
-                                        guides(color = guide_legend(title = "Methods:",title.position = "left",nrow = 2)))
+                                        theme(legend.position = "bottom",
+                                              legend.text = element_text(size=14)) +
+                                        guides(color = guide_legend(title = "Methods:",title.position = "top",nrow = 2)))
 
     # Clustering
     dist_matrix <- dcast(data = AUC_AOC_between_methods.F, formula = method1 ~ method2,value.var = "conservArea")
@@ -185,7 +193,7 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
       theme_pubr() +
       theme(axis.text = element_blank(),
             #axis.text.x = element_text(hjust = 1, angle = 45),
-            text = element_text(size=15),
+            text = element_text(size=16),
             legend.position = "none",
             axis.title.y = element_blank(),
             axis.ticks = element_blank(),
@@ -218,7 +226,7 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
 
     g_vertical_dendrogram <- ggplot() +
       geom_segment(data=dendro_data(hc)$segments, aes(x=x, y=y, xend=xend, yend=yend)) +
-      geom_label_repel(data=dendro_data(hc)$labels, aes(x=x, y=y, label=label, hjust=1, color=label), nudge_y = 0) +
+      geom_label_repel(data=dendro_data(hc)$labels, aes(x=x, y=y, label=label, hjust=1, color=label, size = 14), nudge_y = 0) +
       coord_flip() + scale_y_reverse(expand = c(0,0,0,0)) + scale_x_reverse() +
       scale_color_manual(values = cols) +
       theme(text = element_text(size=12),
@@ -240,7 +248,7 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
 
     g_horizontal_dendrogram <- ggplot() +
       geom_segment(data=dendro_data(hc)$segments, aes(x=x, y=y, xend=xend, yend=yend)) +
-      geom_point(data=dendro_data(hc)$labels, aes(x=x, y=y,color=label),size = 4) +
+      geom_point(data=dendro_data(hc)$labels, aes(x=x, y=y,color=label),size = 5) +
       scale_y_continuous() +
       #scale_y_reverse(expand=c(2,1)) + scale_x_reverse(expand=c(2,1)) +
       scale_color_manual(values = cols) +
@@ -263,19 +271,20 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
     }
     g_heat_w_legend <- get_legend(ggplot(concordance_df_summary.F_area,aes(x = rank, y = concordance)) +
                                     facet_grid(method1 ~ method2,scales = "free_x",switch = "y") +
-                                    labs(fill = addline_format("Rescaled Area from Rank between concordance")) +
-                                    theme_minimal() +
-                                    theme(legend.position = "bottom", text = element_text(size=10)) +
+                                    labs(fill = addline_format("Rescaled Area")) +
+                                    theme_classic() +
+                                    theme(legend.position = "bottom", text = element_text(size=14)) +
                                     guides(fill = guide_colorbar(title.position = "top",barwidth = 15)) +
                                     geom_ribbon(aes(ymin = rank/nfeatures, ymax = concordance, fill = area),alpha = 0.8) +
                                     scale_fill_distiller(palette = "RdYlBu",limits = c(0,1), direction = -1) +
-                                    scale_y_continuous(breaks = c(0,0.5,1),position = "right") +
+                                    scale_y_continuous(breaks = c(0,0.5,1),position = "left") +
                                     scale_x_continuous(breaks = c(0,50,100)))
 
 
 
-    a <- plot_grid(plotlist = list(g_horizontal_dendrogram,g_horizontal_dendrogram,
-                                   g_vertical_dendrogram,g_heat),align = "hv",axis = "lrtb")
+    a <- plot_grid(plotlist = list(#g_horizontal_dendrogram,g_horizontal_dendrogram,
+                                   g_vertical_dendrogram,g_heat),align = "hv",axis = "lrtb", rel_widths = c(0.3,0.7))#,
+                   # rel_widths = c(0.2,0.7),rel_heights = c(0.4,1))
     dendro <- g_vertical_dendrogram
     b <- g_heat_w_legend
     c <- g_legend_dendrogram
@@ -294,10 +303,10 @@ alz <- gheat(AUC_AOC_between_methods = AUC_AOC_between_methods,
            concordance_df_summary = concordance_df_summary)
 
 fig <- plot_grid(alz$heat,
-                 plot_grid(alz$legend_dendro,alz$legend_heat,ncol = 2,rel_widths = c(1,0.4)),nrow = 2,rel_heights = c(1,0.1))
+                 plot_grid(alz$legend_dendro,alz$legend_heat,ncol = 2,rel_widths = c(0.3,0.6)),nrow = 2,rel_heights = c(0.6,0.01))
 fig
 
-png("/blackhole/alessia/GLMM_article/consinstency/figCATbetween_ALZdataset.png", width = 29.5, height = 20, res = 100, units = "cm")
+png("/blackhole/alessia/GLMM_article/consinstency/figCATbetween_IPFdataset.png", width = 29.5, height = 20, res = 100, units = "cm")
 fig
 dev.off()
 
@@ -308,7 +317,11 @@ dev.off()
 
 ```{r}
 #conc_df_sub <- conc[conc$rank == maxrank & conc$subset == "HeldoutvsTest",]
-conc_df_sub <- conc.witbet.ALZ[conc.witbet.ALZ$rank == 400 & conc.witbet.ALZ$subset == "HeldoutvsTest",]
+conc_df_sub <- conc.betglmm.IPF[conc.betglmm.IPF$rank == 1000 & conc.betglmm.IPF$subset == "HeldoutvsTest",]
+conc_df_sub <- conc.witbet.IPF[conc.witbet.IPF$rank == 1000 & conc.witbet.IPF$subset == "HeldoutvsTest",]
+
+conc_df_sub <- conc.betglmm.ALZ[conc.betglmm.ALZ$rank == 1000 & conc.betglmm.ALZ$subset == "HeldoutvsTest",]
+conc_df_sub <- conc.witbet.ALZ[conc.witbet.ALZ$rank == 1000 & conc.witbet.ALZ$subset == "HeldoutvsTest",]
 
 ord <- order(ddply(conc_df_sub,.variables = ~ method1, function(x) median(x[,"concordance"]))$V1)
 conc_df_sub$method1 <- factor(conc_df_sub$method1)
@@ -321,7 +334,7 @@ conc_df_sub$method1 <- factor(conc_df_sub$method1, levels = levels(conc_df_sub$m
                                          "GLMM",
                                          "voom"))
                                          # "EBSeq"))
-png(paste0("/blackhole/alessia/GLMM_article/consinstency/ConcordancewithGLMM_r30_top", maxrank, Dataset, ".png"), 
+png(paste0("/blackhole/alessia/GLMM_article/consinstency/ConcordancewithGLMM_r30_top", maxrank, "IPF", ".png"), 
     res = 100, units = "cm", width = 15, height = 15)
 ggplot(conc_df_sub, aes(x = method1, y = concordance, color = method1)) +
     geom_boxplot() +
@@ -329,7 +342,7 @@ ggplot(conc_df_sub, aes(x = method1, y = concordance, color = method1)) +
     scale_x_discrete(limits = levels(conc_df_sub$method1)[rev(ord)]) +
     xlab("Method") + ylab("Concordance") +
   # facet_wrap(~.id)+
-    ggtitle(label = paste0(Dataset," data"),
+    ggtitle(label = paste0("IPF"," data"),
             subtitle = "Normal vs tumor") +
     theme_classic() +
     theme(plot.margin = unit(c(0,0,0,0), "cm"),
@@ -341,7 +354,7 @@ ggplot(conc_df_sub, aes(x = method1, y = concordance, color = method1)) +
           axis.title=element_text(size=14,face="bold"),
           strip.text.x = element_text(size = 14)) +
     scale_color_manual(values = cols) +
-    scale_y_continuous(limits = c(0,0.5))
+    scale_y_continuous(limits = c(0,1))
 dev.off()
 ```
 

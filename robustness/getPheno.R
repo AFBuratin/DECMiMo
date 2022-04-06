@@ -61,13 +61,19 @@ write.table(randomSubsets,file="/blackhole/alessia/CircModel/power/random_subset
 #------------------------------------------------------------------------------------------------
 ###### IPF data set 
 
-meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses/meta_IPF.csv")
-meta.data = meta.data[seq(1,nrow(meta.data), by = 2),]     # for odd rows
-
-coldata <- DataFrame(condition = meta.data$condition,
-                     group = ifelse(meta.data$condition=="normal", "normal", "IPF"),
-                     sample = meta.data$sample,
-                     row.names = meta.data$sample)
+basedir.ipf <-"/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses"
+meta_file_ipf <- file.path(basedir.ipf, "meta_IPF.csv")
+# create meta file with sample.ID, condition, from meta_tall.csv
+if(meta_file_ipf != ""){
+  meta_ipf <- unique(fread(meta_file_ipf)[, .(sample_id = sample, 
+                                              condition = ifelse(condition=="normal", "normal", "IPF"),
+                                              demo = demographic_group,
+                                              Sex = gender)])
+}
+coldata <- data.frame(condition = meta_ipf$condition,
+                      group = meta_ipf$condition,
+                      sample = meta_ipf$sample_id,
+                      row.names = meta_ipf$sample_id)
 coldata$condition <- factor(coldata$condition)
 coldata$group <- factor(coldata$group)
 coldata$sample <- as.character(coldata$sample)
@@ -110,7 +116,7 @@ printIdx <- function() {
 set.seed(5)
 randomSubsets <- t(replicate(30, printIdx()))
 
-write.table(randomSubsets,file="/blackhole/alessia/CircModel/power/IPF_random_subsets_eval_veri.txt", 
+write.table(randomSubsets,file="/blackhole/alessia/GLMM_article/robustness/IPF_random_subsets_eval_veri.txt", 
             quote=FALSE,row.names=FALSE,col.names=FALSE)
 
 #------------------------------------------------------------------------------------------------

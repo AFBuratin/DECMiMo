@@ -45,11 +45,11 @@ Choose samples in completely random way and create two groups of equal sample si
 
 ```{r}
 ## load meta data
-meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/ALZ/meta_alz.csv")
-meta.data = meta.data[1:17,]     # for odd rows
+meta.data <- read.csv("/blackhole/alessia/GLMM_article/data/meta_alz.csv")
+meta.data
 
 coldata <- DataFrame(condition = meta.data$condition,
-                     group = ifelse(meta.data$condition=="control_brain", "normal", "ALZ"),
+                     group = meta.data$group,
                      sample = meta.data$sample,
                      row.names = meta.data$sample)
 coldata$condition <- factor(coldata$condition)
@@ -64,102 +64,71 @@ coldata
 Use "glm_glmm_paired.R" for GLMM-ZINB model and GLM-NB model to evaluate mock datasets. An output is generated for each evaluation. 
 
 ```{r}
-# load(file = "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/robustness_glmm/DM1/typeIerrorGLM_50rep.RData")
-# load(file = "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/robustness_glmm/DM1/typeIerrorGLMM_5rep_TMB.RData")
-# load(file = "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/robustness_glmm/DM1/typeIerrorGLMM_5rep_TMB2.RData")
-# load(file = "/blackhole/alessia/CircModel/type_I_error_control/ALZ_typeIerrorGLM_GLMM_10rep.RData")
-load(file = "/blackhole/alessia/CircModel/type_I_error_control/ALZ_typeIerrorGLM_GLMM_10repALL.RData")
-load(file = "/blackhole/alessia/CircModel/type_I_error_control/ALZ_typeIerrorGLM_GLMM_20repALL.RData")
-# load(file = "/blackhole/alessia/CircModel/type_I_error_control/TALL_typeIerrorGLM_GLMM_10repALL.RData")
-dt.list = list()
-dt.list2 = list()
-for(x in 1:length(resMethods)) {dt.list[[x]] = melt(as.data.frame(resMethods[[x]]$rateComp), id = "alpha")}
-for(x in 1:length(resMethods_ALZ_20)) {dt.list2[[x]] = melt(as.data.frame(resMethods_ALZ_20[[x]]$rateComp), id = "alpha")}
 
-# for(x in 1:length(resMethods_TALL)) {dt.list2[[x]] = melt(as.data.frame(resMethods_TALL[[x]]$rateComp), id = "alpha")}
-
-rate = rbind(#cbind(rbindlist(dt.list2, idcol = "rep"), dataset = "TALL"), 
-  cbind(rbindlist(dt.list, idcol = "rep"), dataset = "ALZ"), 
-  cbind(rbindlist(dt.list2, idcol = "rep"), dataset = "ALZ"))
-colnames(rate) = c("Rep","alpha","Method","rate", "Dataset")
+load(file = "/blackhole/alessia/GLMM_article/type_I_error_control/ALZ_GLM_30rep.RData")
+load(file = "/blackhole/alessia/GLMM_article/type_I_error_control/ALZ_typeIerror_GLMM_30rep.RData")
+rate = rbind.fill(ratemodel.dt,
+                  rbindlist(rateGLMM_tIe, idcol="rep"))
+colnames(rate) = c("alpha","Rep","Method","rate")
 rate_df = as.data.frame(rate)
-table(rate_df$Rep)
-rate_df$Rep = rep(seq(1,30), each = 24)
-rate_df$Method
-# rateGLM = melt(rbindlist(lapply(resMethods, function(x) rbindlist(resRate, idcol = "Rep")), idcol = "DataSet"), id.vars = c("DataSet", "Rep"))
-# colnames(rateGLM) = c("DataSet","Rep","Method","rate")
-# rateGLMM = data.frame(rate = rbind(rbindlist(resRateGLMM)))
-# rateGLMM$Rep = seq(1:nrow(rateGLMM))
-# rateGLMM$Method = "GLMM-ZINB"
-# rateGLMM = dplyr::rename(rateGLMM, rate=rateNBMM_TBM)
-# df <- rateGLMM[rep(seq_len(nrow(rateGLMM)), each = 7), ]
-# df$DataSet <- rep(names(resRate), 10)
-# rate_df = rbind(rateGLM, df)
+
 ```
 
 # Plot
 
 ```{r}
+library(RColorBrewer)
 cols <- c(
-  # DEseq
-  brewer.pal(n = 9, "YlOrRd")[c(3,4,5,6)],
-  # edgeR
-  brewer.pal(n = 9, name = "GnBu")[c(5,6,7)],
-  # limma
-  brewer.pal(n = 9, "RdPu")[c(5)],
-  # circMeta
-  brewer.pal(n = 9, "OrRd")[c(8)],
   # GLMM
-  brewer.pal(n = 9, "BuPu")[c(5)]
-
+  brewer.pal(n = 9, "BuPu")[c(5)],
+  
+  # DEseq
+  brewer.pal(n = 9, "YlOrRd")[c(3)],
+  # Edger
+  brewer.pal(n = 9, name = "GnBu")[c(5)],
+  # limma
+  brewer.pal(n = 9, "RdPu")[c(5)]
 )
 
-methods2 <- c("DESeq2",
-             "DESeq2-ZeroInflated",
-             "DESeq2-GamPoi",
-             "DESeq2-ZINB Wave",
-             "edgeR",
-             "edgeR-robust",
-             "edgeR-ZINB Wave",
-             "voom",
-             "circMeta",
-             "GLMM")
-
+methods2 <- c("GLMM",
+              
+              "DESeq2",
+             
+              "edgeR-robust",
+              
+              "voom")
 names(cols) <- methods2
 renameAtoB <- function(f,a,b) {
   levels(f)[levels(f) == a] <- b
   f
 }
-rate_df = rate_df %>% dplyr::filter(!Method%in%c("pvalue", "rateGLMM.adj"))
-# rate_df$Method <- renameAtoB(rate_df$Method, "rateGLMM.adj", "GLMM-adj")
-rate_df$Method<- renameAtoB(rate_df$Method, "rateGLMM", "GLMM")
-rate_df$Method<- renameAtoB(rate_df$Method, "DESeq2-ZI", "DESeq2-ZeroInflated")
-rate_df$Method<- renameAtoB(rate_df$Method, "DESeq2-glmGamPoi", "DESeq2-GamPoi")
-rate_df$Method<- renameAtoB(rate_df$Method, "DESeq2-ZINBWave", "DESeq2-ZINB Wave")
-rate_df$Method<- renameAtoB(rate_df$Method, "edgeR-ZINBWave", "edgeR-ZINB Wave")
-
-
-rate_df$Method<- as.character(rate_df$Method)
-rate_df$alpha = factor(rate_df$alpha)
 rate_df$Method = factor(rate_df$Method)
-rate_df$Rep
-divergence_FDR_mean_melted <- ddply(.data = rate_df,.variables = ~ Dataset + Method + alpha,.fun = function(x){
+rate_df$Method <- renameAtoB(rate_df$Method, "edgeR.robust", "edgeR-robust")
+
+rate_df$alpha = factor(rate_df$alpha)
+rate_df$alpha <- renameAtoB(rate_df$alpha, "res.1", "0.1")
+rate_df$alpha <- renameAtoB(rate_df$alpha, "res.05", "0.05")
+
+rate_df$Method <- as.character(rate_df$Method)
+
+divergence_FDR_mean_melted <- ddply(.data = rate_df,.variables = ~ Method + alpha,.fun = function(x){
   if(x$alpha == "0.1"){
-    sum(abs(x[,"rate"]-0.1))/10
+    sum(abs(x[,"rate"]-0.1))/30
   } else if(x$alpha == "0.05"){
-    sum(abs(x[,"rate"]-0.05))/10
+    sum(abs(x[,"rate"]-0.05))/30
   }
 })
+divergence_FDR_mean_melted$Method = factor(divergence_FDR_mean_melted$Method)
 # rank the methods
-ranked_divergence_FDR_mean_melted <- ddply(divergence_FDR_mean_melted,.variables = ~ Dataset + alpha, function(x) rank(x[,"V1"]))
-colnames(ranked_divergence_FDR_mean_melted) <- c("Dataset","alpha",levels(divergence_FDR_mean_melted$Method))
-FDR_divergence_summary <- data.frame(method = levels(divergence_FDR_mean_melted$Method), value = apply(ranked_divergence_FDR_mean_melted[,-(1:2)],2,mean))
-saveRDS(object = FDR_divergence_summary,file = "/blackhole/alessia/CircModel/data/FDR_divergence_summary_ALZ.RDS")
+ranked_divergence_FDR_mean_melted <- ddply(divergence_FDR_mean_melted,.variables = ~ alpha, function(x) rank(x[,"V1"]))
+colnames(ranked_divergence_FDR_mean_melted) <- c("alpha",levels(divergence_FDR_mean_melted$Method))
+FDR_divergence_summary <- data.frame(method = levels(divergence_FDR_mean_melted$Method), value = apply(ranked_divergence_FDR_mean_melted[,-(1)],2,mean))
+saveRDS(object = FDR_divergence_summary,file = "/blackhole/alessia/GLMM_article/data/FDR_divergence_summary_ALZ.RDS")
 
 rate_df_005 = rate_df %>% dplyr::filter(alpha=="0.05")
 rate_df_01 = rate_df %>% dplyr::filter(alpha=="0.1")
 
-png(paste0("/blackhole/alessia/CircModel/type_I_error_control/TIE_ALZ_30rep.png"), units = "cm", width = 20, height = 20, res = 100)
+png(paste0("/blackhole/alessia/GLMM_article/type_I_error_control/TIE_ALZ_30rep.png"), units = "cm", width = 20, height = 20, res = 100)
 
 ggplot(data = pval_df_FDR_mean,aes(color = Method)) +
     geom_boxplot(data = pval_df_FDR_mean001,aes(x = "0.01",y = FDR_obs001)) +
@@ -178,25 +147,30 @@ ggplot(data = pval_df_FDR_mean,aes(color = Method)) +
 
 ggplot(data = rate_df, aes( color = Method)) +
     geom_boxplot(data = rate_df, aes(x = fct_reorder(Method,rate, .desc=FALSE), y = rate)) +
+    scale_y_sqrt(expand=c(0,0)) +
     # geom_boxplot(data = pval_df_FDR_mean005,aes(x = "0.05",y = FDR_obs005)) +
     # geom_boxplot(data = pval_df_FDR_mean01,aes(x = "0.1",y = FDR_obs01)) + 
-    geom_hline(yintercept = c(0.01,0.05,0.1),lty = 2, color = "darkgray") +
+    geom_hline(yintercept = c(0.01, 0.05,0.1), lty = 2, color = "darkred") +
     # geom_segment(aes(x = 1-0.5,xend = 1+0.5,y = 0.1,yend = 0.1), color = "red", lty = 2) +
     # geom_segment(aes(x = 2-0.5,xend = 2+0.5,y = 0.05,yend = 0.05), color = "red", lty = 2) +
     # geom_segment(aes(x = 3-0.5,xend = 3+0.5,y = 0.1,yend = 0.1), color = "red", lty = 2) +
-    facet_wrap(Dataset ~ alpha) + 
-    xlab(expression(Nominal~alpha)) + ylab(expression("Observed"~alpha)) +
+
+    # xlab(expression(Nominal~alpha)) + 
+  xlab("DEMs") + 
+  ylab(expression("Observed"~alpha)) +
+
     #ggtitle(label = "False discoveries for each method") + 
     scale_color_manual(values = cols) +
-    theme_minimal() + 
-    ggtitle(label = paste("False discoveries for ALZ data samples"),subtitle = "Raw p-values") +
-    theme(legend.position = "bottom",
-          axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 15),
-          axis.title = element_text(size=14,face="bold"),
+    theme_classic2() +
+      facet_wrap( ~ alpha) + 
+    ggtitle(label = expression(Nominal~alpha)) + #paste("False discovery rate for ALZ dataset"),subtitle = "Raw p-values") +
+    theme(legend.position = "none",
+          axis.text.x = element_text(size=12,angle = 30, hjust = 1),
+          axis.text.y = element_text(size = 12),
+          axis.title = element_text(size=12),
           # axis.text.y.left = element_text(size = 11),
-          title=element_text(size=14),
-          strip.text.x = element_text(size = 14))
+          title=element_text(size=12),
+          strip.text.x = element_text(size = 12))
 dev.off()
 
 ```

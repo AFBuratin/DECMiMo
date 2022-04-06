@@ -5,6 +5,9 @@ args = commandArgs(trailingOnly=TRUE)
 ## ALZ dataset
 args[1] <- "/blackhole/alessia/GLMM_article/parametric_sim/ALZData_4detmet_parametricsimulations.RData"
 args[2] <- "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_4detmet_evals_parametricsimulations_power.RDS"
+## IPF dataset
+args[1] <- "/blackhole/alessia/GLMM_article/parametric_sim/IPFData_4detmet_parametricsimulations.RData"
+args[2] <- "/blackhole/alessia/GLMM_article/parametric_sim/IPF_4detmet_evals_parametricsimulations_power.RDS"
 
 # test if there is at least one argument: if not, return an error
 if (length(args)!=2) {
@@ -16,7 +19,6 @@ input_file <- args[1]
 output_file <- args[2]
 
 load(file = input_file)
-load(file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_simulation_flow.RData")
 simulation_flow
 start_time <- Sys.time()
 evals <- bplapply(sims, FUN = function(sim){
@@ -41,6 +43,9 @@ args = commandArgs(trailingOnly=TRUE)
 ## ALZ
 args[1] <- "/blackhole/alessia/GLMM_article/parametric_sim/ALZData_glmm_parametricsimulations.RData"
 args[2] <- "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_glmm_evals_parametricsimulations_power.RDS"
+## IPF
+args[1] <- "/blackhole/alessia/GLMM_article/parametric_sim/IPFData_glmm_parametricsimulations.RData"
+args[2] <- "/blackhole/alessia/GLMM_article/parametric_sim/IPF_glmm_evals_parametricsimulations_power.RDS"
 
 if (length(args)!=2) {
   stop("At least two argument must be supplied (input_file and output_file)", call.=FALSE)
@@ -50,8 +55,12 @@ input_file <- args[1]
 ### name for the output is the second input to supply
 output_file <- args[2]
 load(file = input_file)
+
 load(file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZData_glmm_parametricsimulations.RData")
 load(file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_glmm_simulation_flow.RData")
+
+load(file = "/blackhole/alessia/GLMM_article/parametric_sim/IPFData_glmm_parametricsimulations.RData")
+load(file = "/blackhole/alessia/GLMM_article/parametric_sim/IPF_glmm_simulation_flow.RData")
 library(stringr)
 
 start_time <- Sys.time()
@@ -82,9 +91,9 @@ eval.glmm = foreach::foreach (i=c(1:30)) %dopar% {#seq(1,length(sims)-1, by = 8)
   sim.glmm.db.melt <- invisible(reshape2::melt(sim.glmm.db, id.vars = c("method", "circ_id")))
   sim.glmm.db.melt$group <- stringr::str_extract(sim.glmm.db.melt$variable, '[^_]+$')
   sim.glmm.db.melt$sample.name.ext <- paste(sim.glmm.db.melt$variable, sim.glmm.db.melt$method, sep=".")
-  meta.data <- data.frame(sample = c(paste("Sample_",1:as.numeric(simulation_flow.glmm[i,3]),sep=""),
-                                     paste("Sample_",(simulation_flow.glmm[i,3]+1):(2*simulation_flow.glmm[i,3]),sep="")),
-                          condition = c(rep("grp1", simulation_flow.glmm[i,3]), rep("grp2", simulation_flow.glmm[i,3])))
+  meta.data <- data.frame(sample = c(paste("Sample_",1:as.numeric(simulation_flow[i,2]),sep=""),
+                                     paste("Sample_",(simulation_flow[i,2]+1):(2*simulation_flow[i,2]),sep="")),
+                          condition = c(rep("grp1", simulation_flow[i,2]), rep("grp2", simulation_flow[i,2])))
   colnames(sim.glmm.db.melt)[colnames(sim.glmm.db.melt) == 'group'] <- 'condition'
   colnames(sim.glmm.db.melt)[colnames(sim.glmm.db.melt) == 'variable'] <- 'sampleID'
   sim.glmm.db.melt <- data.table::as.data.table(sim.glmm.db.melt)
@@ -147,10 +156,15 @@ eval.glmm = foreach::foreach (i=c(1:30)) %dopar% {#seq(1,length(sims)-1, by = 8)
 }
 
 names(eval.glmm) = names(sims.glmm2)
+saveRDS(eval.glmm, file = "/blackhole/alessia/GLMM_article/parametric_sim/IPF_glmm_parametricsimulations_power.RDS")
+
 saveRDS(eval.glmm, file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_glmm_parametricsimulations_power.RDS")
 
 evals.glmm = readRDS("/blackhole/alessia/GLMM_article/parametric_sim/ALZ_glmm_parametricsimulations_power.RDS")
 evals_all = readRDS("/blackhole/alessia/GLMM_article/parametric_sim/ALZ_4detmet_evals_parametricsimulations_power.RDS")
+
+evals.glmm = readRDS("/blackhole/alessia/GLMM_article/parametric_sim/IPF_glmm_parametricsimulations_power.RDS")
+evals_all = readRDS("/blackhole/alessia/GLMM_article/parametric_sim/IPF_4detmet_evals_parametricsimulations_power.RDS")
 
 evals_all_glmm = append(evals_all, evals.glmm)  
 for(i in c(1:30)){
@@ -181,4 +195,4 @@ names.glmm = apply(simulation_flow.glmm, 1, function(sim) paste(colnames(simulat
                                                    sep = ":",
                                                    collapse = "_"))
 names(evals_all_glmm) = c(names(evals_all), names.glmm)
-saveRDS(evals_all_glmm, file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_detmet_evals_allGLMM_parametricsimulations_power.RDS")
+saveRDS(evals_all_glmm, file = "/blackhole/alessia/GLMM_article/parametric_sim/IPF_detmet_evals_allGLMM_parametricsimulations_power.RDS")

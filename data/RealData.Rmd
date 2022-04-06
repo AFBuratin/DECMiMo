@@ -385,7 +385,7 @@ fix.name <- function(x){
 ```
 
 
-```{r IPF_meta, echo=FALSE, include=FALSE}
+```{r ALZ_meta, echo=FALSE, include=FALSE}
 meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/ALZ/meta_alz.csv")
 meta.data = meta.data[1:17,]     # for odd rows
 
@@ -408,57 +408,7 @@ Keep circRNAs with more than 2 counts in more than 1 samples.
 A dataset is composed by samples from 7 normal and 8 tumor samples.
 
 ```{r include=FALSE}
-## import data
-if(!file.exists("/blackhole/alessia/CircModel/data/IPFData_list.RData")){
-  
-  colClasses <- c("factor", "factor", "character", "integer", "integer", 
-                "integer", "factor", "character", "character")
-  V9pattern <- '.*gene_id "([^"]*)".*transcript_id "([^"]*)".*'
-  V9newCols <- c("gene_id", "transcript_id")
-  ## load circRNA data
-  circrnas.gtf <- fread("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses/circular_expression/circRNA_collection/circrnas.gtf", colClasses = colClasses)
-    # unique(rbindlist(lapply(gtf.file.list, fread, data.table = T, 
-    #                                       colClasses = colClasses))) 
-  count.data <- circrnas.gtf[, `:=`(circRNA_ID = paste0(V1, ":", V4, "-", V5),
-                                    sampleID = gsub("-", "_", sub('.*sample_id "([^"]+)".*', "\\1",
-                                                                                V9)))]
-  
-  get.method.count.matrix <- function(method, x){
-    as.matrix(dcast(data = x[V2 == method],
-                    formula = circRNA_ID ~ sampleID,
-                    value.var = "V6", fill = 0,
-                    fun.aggregate = sum),
-              rownames = "circRNA_ID")
-  }
-
-  # list of count matrices foreach methdos
-  IPFData_list <- list()
-  for(i in 1:(length(methods))){
-    cat("method:",methods[i],"\n")
-    # Keep bodysite
-    m = dcast(data = count.data[V2 == methods[i]],
-                  formula = circRNA_ID ~ sampleID,
-                  value.var = "V6", 
-                  fill = 0, fun.aggregate = sum)
-    ps <- as.matrix(m[,-1])
-    rownames(ps) <- m$circRNA_ID
-    # Keep one sample for each Random Subject IDentifier
-    ps <- ps[rowSums(ps>=2)>=1,]
-    IPFData_list[[i]] <- ps
-    names(IPFData_list)[i] <- methods[i]
-  }
-  
-  count.data.file <- "/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses/circular_expression/circRNA_collection/ccp_counts/bks.counts.union.intersected.csv"
-  count.data <- fread(count.data.file)
-  count.data$circ_id = paste0(count.data$chr, ":", count.data$start+1, "-", count.data$end)
-  ps.ccp2 <- as.matrix(dcast(data = count.data, formula = circ_id~sample_id, fill = 0,value.var = "read.count"),
-                       rownames = "circ_id")
-  # Keep one sample for each Random Subject IDentifier
-  ps.ccp2 <- ps.ccp2[rowSums(ps.ccp2>=2)>=1,]
-  colnames(ps.ccp2) <- gsub("-", "_", colnames(ps.ccp2))
-  IPFData_list[["ccp2"]] <- ceiling(ps.ccp2)
-  save(IPFData_list, file = "/blackhole/alessia/CircModel/data/IPFData_list.RData")
-} else load("/blackhole/alessia/CircModel/data/IPFData_list.RData")
+load("/blackhole/alessia/CircModel/data/IPFData_list.RData")
 
 ```
 
@@ -485,6 +435,15 @@ if(meta_file_ipf != ""){
                                                 demo = demographic_group,
                                                 Sex = gender)])
 }
+coldata <- data.frame(condition = meta_ipf$condition,
+                     group = meta_ipf$condition,
+                     sample = meta_ipf$sample_id,
+                     row.names = meta_ipf$sample_id)
+coldata$condition <- factor(coldata$condition)
+coldata$group <- factor(coldata$group)
+coldata$sample <- as.character(coldata$sample)
+coldata
+write.csv(coldata, "/blackhole/alessia/GLMM_article/data/meta_ipf.csv")
 
 ```
 

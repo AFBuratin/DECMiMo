@@ -13,9 +13,10 @@ We load the benchmarking results, which were produced by the script
 
 <<loadData>>=
 basedir = "/blackhole/alessia/GLMM_article/"
-Dataset = "ALZ"
+Dataset = c("ALZ","IPF")
 
 load(file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM.RData")
+load(file = "/blackhole/alessia/GLMM_article/robustness/robustnessIPF_30rep_GLM_GLMM.RData")
 
 @ 
 
@@ -163,7 +164,7 @@ d$testCalls <- as.numeric(d$testCalls)
 
 <<testCalls, dev="pdf", fig.align="center", fig.width=8, fig.height=6, fig.cap="Evaluation set calls (adjusted $p$-value $< .1$)">>=
 p <- ggplot(d, aes(x=reorder(algorithm,testCalls,median),y=testCalls,color=algorithm))
-png(paste0("/blackhole/alessia/GLMM_article/consinstency/DEcalls_evaluation_", Dataset,".png"), res = 150, units = "cm", width = 15, height = 15)
+png(paste0("/blackhole/alessia/GLMM_article/consinstency/DEcalls_evaluation_", Dataset[2],".png"), res = 150, units = "cm", width = 15, height = 15)
 p + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() +
     geom_point(position = position_jitter(w = 0.1, h = 0), color="grey50", size=1) +
     # facet_grid(.~detection.method) +
@@ -184,7 +185,7 @@ dev.off()
 
 <<heldoutCalls, dev="pdf", fig.align="center", fig.width=8, fig.height=6, fig.cap="Verification set calls (adjusted $p$-value $< .1$)">>=
 p <- ggplot(d, aes(x=reorder(algorithm,heldoutCalls,median),y=heldoutCalls,color=algorithm))
-png(paste0("/blackhole/alessia/GLMM_article/consinstency/DEcalls_verification_", Dataset,".png"), res = 150, units = "cm", width = 15, height = 15)
+png(paste0("/blackhole/alessia/GLMM_article/consinstency/DEcalls_verification_", Dataset[2],".png"), res = 150, units = "cm", width = 15, height = 15)
 p + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() +
     geom_point(position = position_jitter(w = 0.1, h = 0), color="grey50", size=1) +
     # facet_grid(.~detection.method) +
@@ -291,16 +292,16 @@ d <- d %>%
   mutate_if(sapply(d, is.character), as.factor)
 # d$verification <- renameAtoB(d$verification, "GLMM", "GLMM-ZINB")
 # d$evaluation <- renameAtoB(d$evaluation, "GLMM", "GLMM-ZINB")
-png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_sensitivity_gold", Dataset,"_adj.png"), res = 150, units = "cm", width = 18, height = 18)
-p <- ggplot(d, aes(x=evaluation,y=sensitivity,color=evaluation))
+png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_sensitivity_gold", Dataset[2],"_adj.png"), res = 150, units = "cm", width = 18, height = 18)
+p <- ggplot(d, aes(x=evaluation,y=sqrt(sensitivity),color=evaluation))
 p + scale_color_manual(values = cols) + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() + facet_wrap(~ verification) + 
   geom_point(position = position_jitter(w = 0.1, h = 0), color="grey50", size=1) +
   theme(text = element_text(size=18),
         axis.text.x = element_text(angle = 45, hjust = 1)) + 
   xlab("")
 dev.off()
-png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_precision_gold", Dataset,"_adj.png"), res = 150, units = "cm", width = 18, height = 18)
-p <- ggplot(d, aes(x=evaluation,y=precision,color=evaluation))
+png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_precision_gold", Dataset[2],"_adj.png"), res = 150, units = "cm", width = 18, height = 18)
+p <- ggplot(d, aes(x=evaluation,y=sqrt(precision),color=evaluation))
 p + scale_color_manual(values = cols) + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() + facet_wrap(~ verification) +
     geom_point(position = position_jitter(w = 0.1, h = 0), color="grey50", size=1) +
   theme(text = element_text(size=18),
@@ -311,7 +312,7 @@ dev.off()
 
 <<sensitivityGrid, dev="pdf", fig.width=8, fig.height=6, fig.cap="Sensitivity, where each algorithm's calls (adjusted $p$-value $< .1$) in the evaluation set (color boxes) is compared against itselfs (adjusted $p$-value $< .1$) in the verification set (grey labels).">>=
 # d.glmm <- d.glmm[complete.cases(d.glmm),]
-png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_sensitivity_", Dataset,"_adj.png"), res = 200, units = "cm", width = 20, height = 16)
+png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_sensitivity_", Dataset[2],"_adj.png"), res = 200, units = "cm", width = 20, height = 16)
 p <- ggplot(d, aes(x=evaluation,y=sensitivity,color=evaluation))
 p + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() + 
   # facet_wrap(~ detection.method) + 

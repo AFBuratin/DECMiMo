@@ -65,41 +65,54 @@ coldata$sample <- as.character(coldata$sample)
 coldata
 
 ## IPF data set
-randomSubsets <- read.table("/blackhole/alessia/CircModel/power/IPF_random_subsets_eval_veri.txt",strings=FALSE)
+randomSubsets <- read.table("/blackhole/alessia/GLMM_article/robustness/IPF_random_subsets_eval_veri.txt",strings=FALSE)
 
-meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses/meta_IPF.csv")
-meta.data = meta.data[seq(1,nrow(meta.data), by = 2),]     # for odd rows
-
-coldata <- DataFrame(condition = meta.data$condition,
-                     group = ifelse(meta.data$condition=="normal", "normal", "IPF"),
-                     sample_id = meta.data$sample,
-                     row.names = meta.data$sample)
+basedir.ipf <-"/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses"
+meta_file_ipf <- file.path(basedir.ipf, "meta_IPF.csv")
+# create meta file with sample.ID, condition, from meta_tall.csv
+if(meta_file_ipf != ""){
+  meta_ipf <- unique(fread(meta_file_ipf)[, .(sample_id = sample, 
+                                              condition = ifelse(condition=="normal", "normal", "IPF"),
+                                              demo = demographic_group,
+                                              Sex = gender)])
+}
+coldata <- data.frame(condition = meta_ipf$condition,
+                      group = meta_ipf$condition,
+                      sample = meta_ipf$sample_id,
+                      row.names = meta_ipf$sample_id)
 coldata$condition <- factor(coldata$condition)
 coldata$group <- factor(coldata$group)
-coldata$sample_id <- as.character(coldata$sample_id)
+coldata$sample <- as.character(coldata$sample)
 coldata
 
-ccp2 = read.table("/blackhole/alessia/CircModel/data/IPF_ccp2.csv", header = T)
-# ccp2 = RCurl::scp(host = "threesum", path = "/home/enrico/analysis/zicirc/IPF/data/IPF_ccp2.csv", keypasswd = "alessiasucks666", 
-#            user="alessia")
-load("/blackhole/alessia/CircModel/data/IPFData_list.RData")
+load(file = "/blackhole/alessia/CircModel/data/IPFData_list.RData") 
+load(file = "/blackhole/alessia/CircModel/data/IPFZinb_nb_Fit_detmet_models.RData") #created in datasets_and_models.R
+IPFDataFilt_list = lapply(IPFData_list, function(dat){
+  # dat=ALZData_list$findcirc
+  new.data = as.data.frame(dat)
+  new.data$circ_id = rownames(dat)
+  filt.dat = CREART::smallest_group_filter(x = as.data.table(new.data), 
+                                           cond = as.data.table(coldata),
+                                           rthr = 1)
+  count.matrix = as.matrix(filt.dat[,-"circ_id"]) 
+  rownames(count.matrix) = filt.dat$circ_id
+  return(count.matrix)
+})
+methods_det <- c("findcirc", "dcc", "ciri", "circexplorer2_star")
 
-# ccp2 = IPFData_list$ccp2
-chr <- sub(":.*", "", ccp2$circ_id)
-start <- as.numeric(gsub(".*:(.*)\\-.*", "\\1", ccp2$circ_id))
-end <- sub(".*-", "\\1", ccp2$circ_id)
-circ_id = paste0(chr, ":", start+1, "-", end)
-ccp2$circ_id = circ_id
-ccp2.df = ccp2[,-1]
-rownames(ccp2.df) = ccp2$circ_id
-se.ccp2 <- SummarizedExperiment(assays = list(counts = as.matrix(ccp2.df)),
-                                colData = coldata)
-eset.ccp2 <- ExpressionSet(assay(se.ccp2),
-                           AnnotatedDataFrame(as.data.frame(colData(se.ccp2))))
-pData(eset.ccp2)$condition <- factor(pData(eset.ccp2)$group)
-levels(pData(eset.ccp2)$condition) <- c("A", "B")
-e = eset.ccp2
+data_list = IPFDataFilt_list[methods_det]
+models = IPFData_models[methods_det]
 
+library(SummarizedExperiment)
+se <- lapply(data_list, function(x) SummarizedExperiment(x[,colnames(x)%in%coldata$sample], colData = coldata))
+eset <- lapply(se, function(x) ExpressionSet(assay(x),
+                                             AnnotatedDataFrame(as.data.frame(colData(x)))))
+
+e <- lapply(eset, function (x) {
+  pData(x)$condition <- factor(pData(x)$group)
+  levels(pData(x)$condition) <- c("A", "B")
+  x.new = x[which(rowSums(exprs(x))!=0),]
+  return(x.new)})
 
 ## ALZ data set
 randomSubsets <- read.table("/blackhole/alessia/GLMM_article/robustness/ALZ_random_subsets_eval_veri.txt",strings=FALSE)
@@ -145,6 +158,40 @@ e <- lapply(eset, function (x) {
   x.new = x[which(rowSums(exprs(x))!=0),]
   return(x.new)})
 
+lapply(IPFDataFilt_list, function(x) dim(x))
+glmm.db <- rbindlist(lapply(IPFDataFilt_list[det.tools], function(x) 
+  data.frame(x, circ_id = rownames(x))), idcol = "method", use.names = TRUE)
+methods_sel <- c("findcirc", "dcc", "ciri", "circexplorer2_star")
+
+glmm.db = glmm.db %>% dplyr::filter(method%in%methods_sel)
+glmm.melt <- rbindlist(lapply(IPFDataFilt_list, function(x) reshape2::melt(x)), 
+                       idcol = "method", use.names = TRUE)
+glmm.melt = glmm.melt %>% dplyr::filter(method%in%methods_sel)
+
+count.data.melt <- as.data.table(reshape2::melt(glmm.db, id.vars = c("method", "circ_id")))
+name.sep <- "."
+count.data.melt[, sample.name.ext := paste0(variable, name.sep, method)]
+count.data.merge <- merge(count.data.melt, coldata, by.x = "variable", by.y = "sample")
+count.matrix.glmm <- dcast(count.data.melt,circ_id~sample.name.ext, value.var = "value", fill=0)
+rownames(count.matrix.glmm) = count.matrix.glmm$circ_id
+dim(count.matrix.glmm)
+glmm.wide = dcast(count.data.melt,method+sample.name.ext~circ_id, value.var = "value", fill=0)
+colnames(glmm.wide) = c("MethodID", "SampleID", colnames(glmm.wide)[-c(1,2)])
+head(glmm.wide[,c(1:8)])
+
+
+colData.dt <- as.data.table(count.data.merge)[, .N, by = .(variable, method, 
+                                                           group,
+                                                           sample.name.ext)][, N := NULL][]
+colData <- data.frame(colData.dt, 
+                      row.names = "sample.name.ext")
+colnames(colData) = c("sample", "method", "condition")
+colData$sample_id = rownames(colData)
+matrix.glmm = count.matrix.glmm[,-1][,rownames(colData)]
+se.glmm <- SummarizedExperiment(assays = list(counts = matrix.glmm),
+                                colData = colData)
+eset.glmm <- ExpressionSet(assay(se.glmm),
+                           AnnotatedDataFrame(as.data.frame(colData(se.glmm))))
 
 ## TALL data set
 randomSubsets <- read.table("/blackhole/alessia/CircModel/robustness/TALL_random_subsets_eval_veri.txt",strings=FALSE)
@@ -384,7 +431,7 @@ lfcHeldoutGLMM_ZINB <- list()
 set.seed(12388)
 library("future.apply")
 
-plan(multisession, workers = 3)
+plan(multisession, workers = 5)
 
 # res <- future_lapply(X = e, future.seed = T, FUN =  function(x) { 
 #   for(i in pkgs) { library(i, quietly=TRUE, verbose=FALSE, warn.conflicts=FALSE, character.only=TRUE) }
@@ -413,15 +460,15 @@ stats_sim <- function(matrix){
 }
 
 library(future.apply)
-resGLM_ALZ_30rep <- future_lapply(X = e, FUN =  function(x) {
+resGLM_IPF_30rep <- future_lapply(X = e, FUN =  function(x) {
   # x=e$findcirc
   res = bplapply(1:30, function(i) {   
     
     cat(i," ")
     # i = 8
     
-    testSet <- as.character(randomSubsets[i,c(1:6)])
-    heldOutSet <- as.character(randomSubsets[i,-c(1:6)])
+    testSet <- as.character(randomSubsets[i,c(1:7)])
+    heldOutSet <- as.character(randomSubsets[i,-c(1:7)])
     
     eTest <- x[,testSet]
     
@@ -462,16 +509,16 @@ resGLM_ALZ_30rep <- future_lapply(X = e, FUN =  function(x) {
   res
 })
 
-resTes <- lapply(resGLM_ALZ_30rep, function(x) lapply(x, "[[", "resTest"))
-resHeldout <- lapply(resGLM_ALZ_30rep, function(x) lapply(x, "[[", "resHeldout"))
-lfcTest <- lapply(resGLM_ALZ_30rep, function(x) lapply(x, "[[", "lfcTest"))
-lfcHeldout<- lapply(resGLM_ALZ_30rep, function(x) lapply(x, "[[", "lfcHeldout"))
-summary_stat_test <-  lapply(resGLM_ALZ_30rep, function(x) bind_rows(lapply(x, "[[", "summary_stat_test")))
-summary_stat_heldout <-  lapply(resGLM_ALZ_30rep, function(x) bind_rows(lapply(x, "[[", "summary_stat_heldout")))
+resTes <- lapply(resGLM_IPF_30rep, function(x) lapply(x, "[[", "resTest"))
+resHeldout <- lapply(resGLM_IPF_30rep, function(x) lapply(x, "[[", "resHeldout"))
+lfcTest <- lapply(resGLM_IPF_30rep, function(x) lapply(x, "[[", "lfcTest"))
+lfcHeldout<- lapply(resGLM_IPF_30rep, function(x) lapply(x, "[[", "lfcHeldout"))
+summary_stat_test <-  lapply(resGLM_IPF_30rep, function(x) bind_rows(lapply(x, "[[", "summary_stat_test")))
+summary_stat_heldout <-  lapply(resGLM_IPF_30rep, function(x) bind_rows(lapply(x, "[[", "summary_stat_heldout")))
 
-save(resGLM_ALZ_30rep,resTes,resHeldout,lfcTest,lfcHeldout,namesAlgos,
+save(resGLM_IPF_30rep,resTes,resHeldout,lfcTest,lfcHeldout,namesAlgos,
      #/run/user/1001/gvfs/sftp:host=172.21.32.10
-     file="/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLM_30rep.RData")
+     file="/blackhole/alessia/GLMM_article/robustness/IPF_sensitivityPrecision_GLM_30rep.RData")
 
 colData = as.data.table(colData)
 resGLMM_ALZ_30rep <- bplapply(1:30, function(i) {   
@@ -479,8 +526,8 @@ resGLMM_ALZ_30rep <- bplapply(1:30, function(i) {
   cat(i," ")
   # i = 11
   
-  testSetGLMM <- coldata[coldata$sample%in%as.character(randomSubsets[i,1:6]),]
-  heldOutSetGLMM <- coldata[coldata$sample%in%as.character(randomSubsets[i,-c(1:6)]),]
+  testSetGLMM <- coldata[coldata$sample%in%as.character(randomSubsets[i,1:7]),]
+  heldOutSetGLMM <- coldata[coldata$sample%in%as.character(randomSubsets[i,-c(1:7)]),]
   
   ## GLMM
   ## glmm-NB
@@ -488,8 +535,8 @@ resGLMM_ALZ_30rep <- bplapply(1:30, function(i) {
   pheno <- colData[colData$sample%in%testSetGLMM$sample,] %>% 
     dplyr::rename(SampleID = sample) %>% 
     dplyr::rename(MethodID = method)
-  rownames(pheno) = pheno$sampl_id
-  circularcounts <- count.matrix.glmm[, rownames(pheno)]
+  rownames(pheno) = pheno$sample_id
+  circularcounts <- count.matrix.glmm[, colnames(count.matrix.glmm)%in%rownames(pheno)]
   
   summary_stat_test <- stats_sim(circularcounts)
   
@@ -510,9 +557,9 @@ resGLMM_ALZ_30rep <- bplapply(1:30, function(i) {
   pheno <- colData[colData$sample%in%heldOutSetGLMM$sample,] %>% 
     dplyr::rename(SampleID = sample) %>% 
     dplyr::rename(MethodID = method)
-  rownames(pheno) = pheno$sampl_id
+  rownames(pheno) = pheno$sample_id
   
-  circularcounts <- count.matrix.glmm[, rownames(pheno)]
+  circularcounts <- count.matrix.glmm[, colnames(count.matrix.glmm)%in%rownames(pheno)]
   
   summary_stat_heldout <- stats_sim(circularcounts)
   
@@ -591,13 +638,14 @@ lfcTestGLMM <- lapply(resGLMM_ALZ_30rep, "[[", "lfcTestGLMM") #lapply(res, funct
 lfcHeldoutGLMM<- lapply(resGLMM_ALZ_30rep, "[[", "lfcHeldoutGLMM") #lapply(res, function(x) lapply(x, "[[", "lfcHeldout"))
 summary_stat_test_GLMM <- bind_rows(lapply(resGLMM_ALZ_30rep, "[[", "summary_stat_test_GLMM"))
 summary_stat_heldout_GLMM <- bind_rows(lapply(resGLMM_ALZ_30rep, "[[", "summary_stat_heldout_GLMM"))
-
-save(resGLMM_ALZ_30rep, resTestGLMM, resHeldoutGLMM,lfcTestGLMM,lfcHeldoutGLMM,
+resGLMM_IPF_30rep = resGLMM_ALZ_30rep
+save(resGLMM_IPF_30rep, resTestGLMM, resHeldoutGLMM,lfcTestGLMM,lfcHeldoutGLMM,
      summary_stat_test_GLMM, summary_stat_heldout_GLMM,
-     file="/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLMM_30rep.RData")
+     file="/blackhole/alessia/GLMM_article/robustness/IPF_sensitivityPrecision_GLMM_30rep.RData")
 
-load("/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLM_30rep.RData")
+# load("/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLM_30rep.RData")
      # "/run/user/1001/gvfs/sftp:host=172.21.32.10/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLM_30rep.RData")
+load("/blackhole/alessia/GLMM_article/robustness/IPF_sensitivityPrecision_GLM_30rep.RData")
 
 library(tidyverse)
 res_GLM_min = lapply(list(resTes, resHeldout), function(res){
@@ -623,17 +671,25 @@ for(i in 1:30){
 res_GLM_GLMM_rep_Test = list()
 for(r in 1:30){
   #r=1
-  res_GLM_GLMM_rep_Test[[r]] = merge(res_GLM_min_rep_Test[[r]], resTestGLMM[[r]], by="rn",all=T)
+  res_GLM_GLMM_rep_Test[[r]] = merge(res_GLM_min_rep_Test[[r]], 
+                                     resTestGLMM[[r]], by.x="rn", by.y = "row.names", all=T)
 }
 res_GLM_GLMM_rep_Heldout = list()
 for(r in 1:30){
   #r=1
-  res_GLM_GLMM_rep_Heldout[[r]] = merge(res_GLM_min_rep_Heldout[[r]], resHeldoutGLMM[[r]], by="rn",all=T)
+  res_GLM_GLMM_rep_Heldout[[r]] = merge(res_GLM_min_rep_Heldout[[r]], 
+                                        resHeldoutGLMM[[r]], by.x="rn", by.y = "row.names", all=T)
 }
 #save(res_GLM_GLMM_rep_Test, res_GLM_GLMM_rep_Heldout, file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM.RData")
 # write.csv(minPadj, "/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_ALZ.csv")
 # res_GLM_min = read.csv("/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_ALZ.csv")
-load("/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLMM_30rep.RData")
+# load("/blackhole/alessia/GLMM_article/robustness/ALZ_sensitivityPrecision_GLMM_30rep.RData")
+
+save(res_GLM_GLMM_rep_Test, res_GLM_GLMM_rep_Heldout, 
+     file = "/blackhole/alessia/GLMM_article/robustness/robustnessIPF_30rep_GLM_GLMM.RData")
+write.csv(minPadj, "/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_IPF.csv")
+res_GLM_min = read.csv("/blackhole/alessia/GLMM_article/robustness/minPadj_30Rep_IPF.csv")
+load("/blackhole/alessia/GLMM_article/robustness/IPF_sensitivityPrecision_GLMM_30rep.RData")
 
 res_GLMM = lapply(list(resTestGLMM, resHeldoutGLMM), function(res){
   resGLMM = melt(rbindlist(lapply(res, setDT, keep.rownames = TRUE),  idcol = c("Rep","rn")), id.vars = c("Rep", "rn")) 
@@ -641,9 +697,10 @@ res_GLMM = lapply(list(resTestGLMM, resHeldoutGLMM), function(res){
 })
 names(res_GLMM) = c("resTest", "resHeldout")
 
-res.concordance_30rep = rbind.fill(rbindlist(res_GLMM, idcol = "result"), rbindlist(res_GLM_min, idcol = "result"))
-# write.csv(res.concordance_30rep, "/blackhole/alessia/GLMM_article/robustness/GLM_GLMM_Padj_30Rep_ALZ.csv")
-
+res.concordance_30rep = rbind.fill(rbindlist(res_GLMM, idcol = "result"), 
+                                   rbindlist(res_GLM_min, idcol = "result"))
+write.csv(res.concordance_30rep, 
+          "/blackhole/alessia/GLMM_article/robustness/GLM_GLMM_Padj_30Rep_IPF.csv")
 
 lfc_GLM_min = lapply(list(lfcTest, lfcHeldout), function(res){
   DT = melt(rbindlist(lapply(res, function(x){
@@ -667,7 +724,8 @@ for(i in 1:30){
 lfc_GLM_GLMM_rep_Test = list()
 for(r in 1:30){
   #r=1
-  lfc_GLM_GLMM_rep_Test[[r]] = merge(lfc_GLM_min_rep_Test[[r]], lfcTestGLMM[[r]], by.x="rn", by.y="row.names", all=T)
+  lfc_GLM_GLMM_rep_Test[[r]] = merge(lfc_GLM_min_rep_Test[[r]], lfcTestGLMM[[r]], 
+                                     by.x="rn", by.y="row.names", all=T)
 }
 lfc_GLM_GLMM_rep_Test = lapply(lfc_GLM_GLMM_rep_Test, function(x) {
   names(x)=c("rn","DESeq2", "edgeR-robust","voom","GLMM")
@@ -684,7 +742,7 @@ lfc_GLM_GLMM_rep_Heldout = lapply(lfc_GLM_GLMM_rep_Heldout, function(x) {
 return(x)
 })
 save(lfc_GLM_GLMM_rep_Test, lfc_GLM_GLMM_rep_Heldout,
-file = "/blackhole/alessia/GLMM_article/robustness/robustness_30rep_GLM_GLMM_lfc.RData")
+file = "/blackhole/alessia/GLMM_article/robustness/robustnessIPF_30rep_GLM_GLMM_lfc.RData")
 
 # type I error control -------------
 

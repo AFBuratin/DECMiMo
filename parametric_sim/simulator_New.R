@@ -12,8 +12,20 @@ methods_det <- c("findcirc", "dcc", "ciri", "circexplorer2_star")
 ### IPF
 load(file = "/blackhole/alessia/CircModel/data/IPFData_list.RData") 
 load(file = "/blackhole/alessia/CircModel/data/IPFZinb_nb_Fit_detmet_models.RData") #created in datasets_and_models.R
-data_list = IPFData_list
-models = IPFData_models
+coldata = read.csv( "/blackhole/alessia/GLMM_article/data/meta_ipf.csv")
+IPFDataFilt_list = lapply(IPFData_list, function(dat){
+  # dat=ALZData_list$findcirc
+  new.data = as.data.frame(dat)
+  new.data$circ_id = rownames(dat)
+  filt.dat = CREART::smallest_group_filter(x = as.data.table(new.data), 
+                                           cond = as.data.table(coldata),
+                                           rthr = 1)
+  count.matrix = as.matrix(filt.dat[,-"circ_id"]) 
+  rownames(count.matrix) = filt.dat$circ_id
+  return(count.matrix)
+})
+data_list = IPFData_list[methods_det]
+models = IPFData_models[methods_det]
 
 ### ALZ
 load(file = "/blackhole/alessia/GLMM_article/data/ALZData_list.RData") 
@@ -76,11 +88,11 @@ for(i in 1:nrow(simulation_flow)){
 }
 
 ### IPF
-save(simulation_flow,file = "/blackhole/alessia/CircModel/data/IPF_simulation_flow.RData")
+save(simulation_flow,file = "/blackhole/alessia/GLMM_article/parametric_sim/IPF_simulation_flow.RData")
 ### ALZ
 save(simulation_flow,file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_simulation_flow.RData")
 
-load("/blackhole/alessia/GLMM_article/parametric_sim/ALZ_simulation_flow.RData")
+load("/blackhole/alessia/GLMM_article/parametric_sim/IPF_simulation_flow.RData")
 library(phyloseq)
 sims <- apply(simulation_flow, 1, function(sim){
   
@@ -137,9 +149,9 @@ stats_sim <- function(matrix){
 }
 ## Depending on which dataset you chose at the beginning
 ### ALZ
-save(sims, file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZData_4detmet_parametricsimulations.RData")
+# save(sims, file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZData_4detmet_parametricsimulations.RData")
 ### IPF
-save(sims, file = "/blackhole/alessia/CircModel/parametric_sim/IPFData_detmet_parametricsimulations_sparsity.RData")
+save(sims, file = "/blackhole/alessia/GLMM_article/parametric_sim/IPFData_4detmet_parametricsimulations.RData")
 
 library(plyr)
 library(ggplot2)
@@ -197,15 +209,15 @@ for(i in 1:nrow(simulation_flow.glmm)){
 simulation_flow.glmm = simulation_flow.glmm[order(simulation_flow.glmm$simulation, simulation_flow.glmm$dataset, simulation_flow.glmm$sampleSize), ]
 simulation_flow.glmm$sims.glmm <- rep(seq(1,3,1), 180)
 
-simulation_flow.glmm <- simulation_flow.glmm[order(simulation_flow.glmm$sampleSize),]
+simulation_flow.glmm <- simulation_flow[order(simulation_flow$simulation),]
 
 ### ALZ
-save(simulation_flow.glmm,file = "/blackhole/alessia/CircModel/parametric_sim/ALZ_glmm_simulation_flow.RData")
-save(simulation_flow.glmm,file = "/blackhole/alessia/CircModel/parametric_sim/IPF_glmm_simulation_flow.RData")
+save(simulation_flow.glmm,file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZ_glmm_simulation_flow.RData")
+save(simulation_flow.glmm,file = "/blackhole/alessia/GLMM_article/parametric_sim/IPF_glmm_simulation_flow.RData")
 
 sims.glmm <- apply(simulation_flow.glmm, 1, function(sim){
   
-  #sim = simulation_flow.glmm[4,]
+  #sim = simulation_flow.glmm[1,]
   
   simName <- paste(colnames(simulation_flow.glmm),sim[1:ncol(simulation_flow.glmm)],
                    sep = ":",
@@ -243,12 +255,12 @@ sims.glmm <- apply(simulation_flow.glmm, 1, function(sim){
 
 sims.glmm <- list()
 for (k in seq(1,nrow(simulation_flow.glmm)-1, by = 4)) { #for each scenario
-  # k = 1
+  # k = 5
   range <- min(rbindlist(lapply(models, function(x) data.frame(length(x$sample.mu)))))
   ncircular = 5000
   chosen <- sample(range, ncircular, replace = TRUE)
   
-  nde = (1-(1-simulation_flow.glmm[k,4]))*ncircular
+  nde = (1-(1-simulation_flow.glmm[k,5]))*ncircular
   ## expected false positives
   FP <- round(ncircular * (1-nde/ncircular))
   TP <- ncircular - FP 
@@ -271,7 +283,7 @@ for (k in seq(1,nrow(simulation_flow.glmm)-1, by = 4)) { #for each scenario
   
   sims.glmm[[k]] <- apply(simulation_flow.glmm[k:(k+4-1),], 1, function(sim){
   
-  # sim = simulation_flow.glmm[k:(k+6-1),][1,]
+  # sim = simulation_flow.glmm[k:(k+4-1),][1,]
   
   simName <- paste(colnames(simulation_flow.glmm),sim[1:ncol(simulation_flow.glmm)],
                    sep = ":",
@@ -290,8 +302,8 @@ for (k in seq(1,nrow(simulation_flow.glmm)-1, by = 4)) { #for each scenario
   zi.prop = true_model$zi.prop
   relative.size = true_model$relative.size
   relative.size <- relative.size/mean(relative.size) # mean centering
-  m = as.numeric(sim[[3]]) #n.samples.per.group c(3, 5)
-  fc = as.numeric(sim[[5]]) #FC c(2, 5) scenario 2
+  m = as.numeric(sim[[4]]) #n.samples.per.group c(3, 5)
+  fc = as.numeric(sim[[6]]) #FC c(2, 5) scenario 2
   zinb = "ZINB" #distribution c("NB","ZINB")
   mod.lib = 1
   mod.shape = 1
@@ -380,7 +392,7 @@ simulation_flow <- data.frame(expand.grid(simulation = simulation,
                                                foldEffect = foldEffect 
                                                #sparsityEffect = sparsityEffect
 ))
-rownames(simulation_flow) <- 1:nrow(simulation_flow.glmm)
+rownames(simulation_flow) <- 1:30
 dim(simulation_flow)
 
 names(sims.glmm2) <- apply(simulation_flow, 1, function(sim) paste(colnames(simulation_flow),
@@ -391,4 +403,4 @@ names(sims.glmm2) <- apply(simulation_flow, 1, function(sim) paste(colnames(simu
 ## Depending on which dataset you chose at the beginning
 ### ALZ
 save(sims.glmm2, file = "/blackhole/alessia/GLMM_article/parametric_sim/ALZData_glmm_parametricsimulations.RData")
-save(sims.glmm2, file = "/blackhole/alessia/CircModel/parametric_sim/IPFData_glmm_parametricsimulations.RData")
+save(sims.glmm2, file = "/blackhole/alessia/GLMM_article/parametric_sim/IPFData_glmm_parametricsimulations.RData")

@@ -1,0 +1,654 @@
+---
+title: "Intra_inter_correlation"
+author: "Alessia Buratin"
+date: 'Compiled: `r format(Sys.Date(), "%d %B, %Y")`'
+output:
+  html_document:
+    code_folding: hide
+    df_print: kable
+    number_sections: no
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+<style>
+#TOC {
+  top: 1%;
+  opacity: 0.5;
+}
+#TOC:hover {
+  opacity: 1;
+}
+</style>
+
+
+```{r, message=FALSE}
+library(dplyr)
+library(fmsb)
+library(matrixStats)
+library(data.table)
+library(purrr)
+library(gdata)
+library(ggplot2)
+###################
+# Inter functions #
+###################
+interpairwiseCor <- function(X){
+pairs <- combn(colnames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+ngenes_vector <- vector(mode="numeric",length=length(pairs))
+corr_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[,pairs[[i]][1]])
+        cell2 <- as.numeric(X[,pairs[[i]][2]])
+        corr_vector[i] <- round(cor(cell1,cell2,method="spearman"),4)
+}
+corr_vector
+}
+interpairwiseConcordance <- function(X){
+pairs <- combn(colnames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+kappa_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[,pairs[[i]][1]])
+        cell1 <- ifelse(cell1 == 0, 0, 1)
+        cell2 <- as.numeric(X[,pairs[[i]][2]])
+        cell2 <- ifelse(cell2 == 0, 0, 1)
+        if (mean(cell1) != 1 & mean(cell2) != 1){
+        kappa_vector[i] <- Kappa.test(cell1,cell2)$Result$estimate
+        } else {
+        kappa_vector[i] <- NA
+        }
+}
+kappa_vector
+}
+###########################
+# Read in and filter data #
+###########################
+dataset = "ALZ"
+load("/blackhole/alessia/CircModel/data/ALZData_list.RData")
+meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/ALZ/meta_alz.csv")
+meta.data = meta.data[1:17,]     # for odd rows
+
+coldata <- DataFrame(condition = meta.data$condition,
+                     group = ifelse(meta.data$condition=="control_brain", "normal", "ALZ"),
+                     sample = meta.data$sample,
+                     row.names = meta.data$sample)
+coldata$condition <- factor(coldata$condition)
+coldata$group <- factor(coldata$group)
+coldata$sample <- as.character(coldata$sample)
+coldata
+
+glmm.db <- rbindlist(lapply(ALZData_list[1:6], function(x) data.frame(x, circ_id = rownames(x))), 
+                     idcol = "method", use.names = TRUE)
+glmm.melt <- rbindlist(lapply(ALZData_list[1:6], function(x) reshape2::melt(x)), 
+                     idcol = "method", use.names = TRUE)
+
+count.data.melt <- as.data.table(reshape2::melt(glmm.db, id.vars = c("method", "circ_id")))
+name.sep <- "."
+count.data.melt[, sample.name.ext := paste0(variable, name.sep, method)]
+count.data.merge <- merge(count.data.melt, coldata, by.x = "variable", by.y = "sample")
+
+colData.dt <- as.data.table(count.data.merge)[, .N, by = .(variable, method, 
+                                            group,
+                                            sample.name.ext)][, N := NULL][]
+
+colData <- data.frame(colData.dt, 
+                      row.names = "sample.name.ext")
+glmm.wide = dcast(glmm.melt, method+Var2~Var1, value.var = "value", fill=0)
+colnames(glmm.wide) = c("MethodID", "SampleID", colnames(glmm.wide)[-c(1,2)])
+glmm.wide = glmm.wide %>% mutate(sampleType = case_when(
+        SampleID%in%colData$variable[colData$group=="ALZ"] ~ "Tumor",
+        SampleID%in%colData$variable[colData$group=="normal"] ~ "Normal") %>%
+  as.factor() %>%
+  structure(levels = c("Tumor","Normal")))
+
+##############################
+# Pull uncorrelated circRNAs #
+##############################
+reduced <- glmm.wide %>% dplyr::select(-c(MethodID, SampleID, sampleType)) %>% as.data.frame()
+genelist <- colnames(reduced)
+uncorrelatedgenes <- glmm.wide[,c("MethodID","sampleType")]
+for (i in 1:500){
+  # i=1
+  genename <- sample(genelist,1)
+  drawngene <- reduced[,genename]
+  uncorrelatedgenes <- cbind(uncorrelatedgenes,drawngene)
+  correlations <- abs(cor(drawngene,reduced))
+  genelist <- names(correlations[,which(correlations < 0.25)])
+  reduced <- reduced[,genelist]
+  if (ncol(reduced) < 10) break
+}
+samples <- as.data.frame(uncorrelatedgenes)
+################################
+# Pull one sampl per method #
+################################
+samples <- split(samples[,c(-1, -2)],samples$MethodID)
+pullonecell <- function(x) {
+        x[sample(1:nrow(x),1),]
+}
+onecell <- function(x) {
+        sapply(samples,pullonecell)
+}
+#################################
+# Compute pairwise correlations #
+#################################
+n_rep <- 10
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseCor)
+inter_corr <- unmatrix(do.call("rbind",repmeans))
+inter_corr <- cbind(rep("Inter_ALZ_Correlation",length(inter_corr)),inter_corr)
+inter_corr <- as.data.frame(cbind(rep("Inter",nrow(inter_corr)),inter_corr))
+colnames(inter_corr) <- c("Type","TypeSamples","Correlation")
+inter_corr$Correlation <- as.numeric(as.character(inter_corr$Correlation))
+hist(inter_corr$Correlation)
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseConcordance)
+inter_agree <- unmatrix(do.call("rbind",repmeans))
+inter_agree <- cbind(rep("Inter_ALZ_Concordance",length(inter_agree)),inter_agree)
+inter_agree <- as.data.frame(cbind(rep("Inter",nrow(inter_agree)),inter_agree))
+colnames(inter_agree) <- c("Type","TypeSamples","Kappa")
+inter_agree$Kappa <- as.numeric(as.character(inter_agree$Kappa))
+hist(inter_agree$Kappa)
+###################
+# Intra functions #
+###################
+intrapairwiseCor <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+corr_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        corr_vector[i] <- round(cor(cell1,cell2,method="spearman"),4)
+}
+corr_vector
+}
+intrapairwiseConcordance <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+kappa_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell1 <- ifelse(cell1 == 0, 0, 1)
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        cell2 <- ifelse(cell2 == 0, 0, 1)
+        if (mean(cell1) != 1 & mean(cell2) != 1){
+        kappa_vector[i] <- Kappa.test(cell1,cell2)$Result$estimate
+        } else {
+        kappa_vector[i] <- NA
+        }
+}
+kappa_vector
+}
+samples <- as.data.frame(uncorrelatedgenes)
+samples <- split(samples[,c(-1,-2)],samples$MethodID)
+intra_corr <- as.numeric(unlist(sapply(samples,intrapairwiseCor)))
+intra_corr <- cbind(rep("Intra_ALZ_Correlation",length(intra_corr)),intra_corr)
+intra_corr <- as.data.frame(cbind(rep("Intra",nrow(intra_corr)),intra_corr))
+colnames(intra_corr) <- c("Type","TypeSamples","Correlation")
+intra_corr$Correlation <- as.numeric(as.character(intra_corr$Correlation))
+hist(intra_corr$Correlation)
+intra_agree <- as.numeric(unlist(sapply(samples,intrapairwiseConcordance)))
+intra_agree <- cbind(rep("Intra_ALZ_Concordance",length(intra_agree)),intra_agree)
+intra_agree <- as.data.frame(cbind(rep("Intra",nrow(intra_agree)),intra_agree))
+colnames(intra_agree) <- c("Type","TypeSamples","Kappa")
+intra_agree$Kappa <- as.numeric(as.character(intra_agree$Kappa))
+hist(intra_agree$Kappa)
+allcorr_ALZ <- rbind(inter_corr,intra_corr)
+allcorr_ALZ$dataset = "ALZ"
+allagree_ALZ <- rbind(inter_agree,intra_agree)
+allagree_ALZ$dataset = "ALZ"
+```
+
+```{r, message=FALSE}
+
+###########################
+# Read in and filter data #
+###########################
+
+dataset = "IPF"
+load("/blackhole/alessia/CircModel/data/IPFData_list.RData")
+
+meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/IPF/analyses/meta_IPF.csv")
+meta.data = meta.data[seq(1,nrow(meta.data), by = 2),]     # for odd rows
+
+coldata <- DataFrame(condition = meta.data$condition,
+                     group = ifelse(meta.data$condition=="normal", "normal", "IPF"),
+                     sample_id = meta.data$sample,
+                     row.names = meta.data$sample)
+coldata$condition <- factor(coldata$condition)
+coldata$group <- factor(coldata$group)
+coldata$sample <- as.character(coldata$sample_id)
+coldata
+
+glmm.db <- rbindlist(lapply(IPFData_list[1:6], function(x) data.frame(x, circ_id = rownames(x))), 
+                     idcol = "method", use.names = TRUE)
+glmm.melt <- rbindlist(lapply(IPFData_list[1:6], function(x) reshape2::melt(x)), 
+                     idcol = "method", use.names = TRUE)
+
+count.data.melt <- as.data.table(reshape2::melt(glmm.db, id.vars = c("method", "circ_id")))
+name.sep <- "."
+count.data.melt[, sample.name.ext := paste0(variable, name.sep, method)]
+count.data.merge <- merge(count.data.melt, coldata, by.x = "variable", by.y = "sample")
+
+colData.dt <- as.data.table(count.data.merge)[, .N, by = .(variable, method, 
+                                            group,
+                                            sample.name.ext)][, N := NULL][]
+
+colData <- data.frame(colData.dt, 
+                      row.names = "sample.name.ext")
+glmm.wide = dcast(glmm.melt, method+Var2~Var1, value.var = "value", fill=0)
+colnames(glmm.wide) = c("MethodID", "SampleID", colnames(glmm.wide)[-c(1,2)])
+glmm.wide = glmm.wide %>% mutate(sampleType = case_when(
+        SampleID%in%colData$variable[colData$group=="IPF"] ~ "Tumor",
+        SampleID%in%colData$variable[colData$group=="normal"] ~ "Normal") %>%
+  as.factor() %>%
+  structure(levels = c("Tumor","Normal")))
+
+##############################
+# Pull uncorrelated circRNAs #
+##############################
+reduced <- glmm.wide %>% dplyr::select(-c(MethodID, SampleID, sampleType)) %>% as.data.frame()
+genelist <- colnames(reduced)
+uncorrelatedgenes <- glmm.wide[,c("MethodID","sampleType")]
+for (i in 1:500){
+  # i=1
+  genename <- sample(genelist,1)
+  drawngene <- reduced[,genename]
+  uncorrelatedgenes <- cbind(uncorrelatedgenes,drawngene)
+  correlations <- abs(cor(drawngene,reduced))
+  genelist <- names(correlations[,which(correlations < 0.25)])
+  reduced <- reduced[,genelist]
+  if (ncol(reduced) < 10) break
+}
+samples <- as.data.frame(uncorrelatedgenes)
+################################
+# Pull one sampl per method #
+################################
+samples <- split(samples[,c(-1, -2)],samples$MethodID)
+pullonecell <- function(x) {
+        x[sample(1:nrow(x),1),]
+}
+onecell <- function(x) {
+        sapply(samples,pullonecell)
+}
+#################################
+# Compute pairwise correlations #
+#################################
+n_rep <- 10
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseCor)
+inter_corr <- unmatrix(do.call("rbind",repmeans))
+inter_corr <- cbind(rep(paste0("Inter_", dataset, "_Correlation"),length(inter_corr)),inter_corr)
+inter_corr <- as.data.frame(cbind(rep("Inter",nrow(inter_corr)),inter_corr))
+colnames(inter_corr) <- c("Type","TypeSamples","Correlation")
+inter_corr$Correlation <- as.numeric(as.character(inter_corr$Correlation))
+hist(inter_corr$Correlation)
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseConcordance)
+inter_agree <- unmatrix(do.call("rbind",repmeans))
+inter_agree <- cbind(rep(paste0("Inter_", dataset, "_Concordance"),length(inter_agree)),inter_agree)
+inter_agree <- as.data.frame(cbind(rep("Inter",nrow(inter_agree)),inter_agree))
+colnames(inter_agree) <- c("Type","TypeSamples","Kappa")
+inter_agree$Kappa <- as.numeric(as.character(inter_agree$Kappa))
+hist(inter_agree$Kappa)
+###################
+# Intra functions #
+###################
+intrapairwiseCor <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+corr_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        corr_vector[i] <- round(cor(cell1,cell2,method="spearman"),4)
+}
+corr_vector
+}
+intrapairwiseConcordance <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+kappa_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell1 <- ifelse(cell1 == 0, 0, 1)
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        cell2 <- ifelse(cell2 == 0, 0, 1)
+        if (mean(cell1) != 1 & mean(cell2) != 1){
+        kappa_vector[i] <- Kappa.test(cell1,cell2)$Result$estimate
+        } else {
+        kappa_vector[i] <- NA
+        }
+}
+kappa_vector
+}
+samples <- as.data.frame(uncorrelatedgenes)
+samples <- split(samples[,c(-1,-2)],samples$MethodID)
+intra_corr <- as.numeric(unlist(sapply(samples,intrapairwiseCor)))
+intra_corr <- cbind(rep(paste0("Inter_", dataset, "_Correlation"),length(intra_corr)),intra_corr)
+intra_corr <- as.data.frame(cbind(rep("Intra",nrow(intra_corr)),intra_corr))
+colnames(intra_corr) <- c("Type","TypeSamples","Correlation")
+intra_corr$Correlation <- as.numeric(as.character(intra_corr$Correlation))
+hist(intra_corr$Correlation)
+intra_agree <- as.numeric(unlist(sapply(samples,intrapairwiseConcordance)))
+intra_agree <- cbind(rep(paste0("Inter_", dataset, "_Concordance"),length(intra_agree)),intra_agree)
+intra_agree <- as.data.frame(cbind(rep("Intra",nrow(intra_agree)),intra_agree))
+colnames(intra_agree) <- c("Type","TypeSamples","Kappa")
+intra_agree$Kappa <- as.numeric(as.character(intra_agree$Kappa))
+hist(intra_agree$Kappa)
+allcorr_IPF <- rbind(inter_corr,intra_corr)
+allcorr_IPF$dataset  = "IPF"
+allagree_IPF <- rbind(inter_agree,intra_agree)
+allagree_IPF$dataset  = "IPF"
+```
+
+```{r, message=FALSE}
+
+###########################
+# Read in and filter data #
+###########################
+
+dataset = "DM1"
+load("/blackhole/alessia/CircModel/data/DM1Data_list.RData")
+
+meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/DM1/meta_DM1.csv")
+meta.data = as.data.table(meta.data)
+meta.data <- meta.data[, .(sample_id = sample,
+                           condition = ifelse(disease_class=="myotonic dystrophy type 1", "DM1","Normal"))]
+meta.data = meta.data[order(meta.data$sample_id),][seq(1,nrow(meta.data), by = 2),]     # for odd rows
+
+coldata <- DataFrame(group = meta.data$condition,
+                     sample = meta.data$sample,
+                     row.names = meta.data$sample)
+coldata$group <- factor(coldata$group)
+coldata$sample <- as.character(coldata$sample)
+coldata
+
+glmm.db <- rbindlist(lapply(DM1Data_list[1:6], function(x) data.frame(x, circ_id = rownames(x))), 
+                     idcol = "method", use.names = TRUE)
+glmm.melt <- rbindlist(lapply(DM1Data_list[1:6], function(x) reshape2::melt(x)), 
+                     idcol = "method", use.names = TRUE)
+
+count.data.melt <- as.data.table(reshape2::melt(glmm.db, id.vars = c("method", "circ_id")))
+name.sep <- "."
+count.data.melt[, sample.name.ext := paste0(variable, name.sep, method)]
+count.data.merge <- merge(count.data.melt, coldata, by.x = "variable", by.y = "sample")
+
+colData.dt <- as.data.table(count.data.merge)[, .N, by = .(variable, method, 
+                                            group,
+                                            sample.name.ext)][, N := NULL][]
+
+colData <- data.frame(colData.dt, 
+                      row.names = "sample.name.ext")
+glmm.wide = dcast(glmm.melt, method+Var2~Var1, value.var = "value", fill=0)
+colnames(glmm.wide) = c("MethodID", "SampleID", colnames(glmm.wide)[-c(1,2)])
+glmm.wide = glmm.wide %>% mutate(sampleType = case_when(
+        SampleID%in%colData$variable[colData$group=="DM1"] ~ "Tumor",
+        SampleID%in%colData$variable[colData$group=="Normal"] ~ "Normal") %>%
+  as.factor() %>%
+  structure(levels = c("Tumor","Normal")))
+
+##############################
+# Pull uncorrelated circRNAs #
+##############################
+reduced <- glmm.wide %>% dplyr::select(-c(MethodID, SampleID, sampleType)) %>% as.data.frame()
+genelist <- colnames(reduced)
+uncorrelatedgenes <- glmm.wide[,c("MethodID","sampleType")]
+for (i in 1:500){
+  # i=1
+  genename <- sample(genelist,1)
+  drawngene <- reduced[,genename]
+  uncorrelatedgenes <- cbind(uncorrelatedgenes,drawngene)
+  correlations <- abs(cor(drawngene,reduced))
+  genelist <- names(correlations[,which(correlations < 0.25)])
+  reduced <- reduced[,genelist]
+  if (ncol(reduced) < 10) break
+}
+samples <- as.data.frame(uncorrelatedgenes)
+################################
+# Pull one sampl per method #
+################################
+samples <- split(samples[,c(-1, -2)],samples$MethodID)
+pullonecell <- function(x) {
+        x[sample(1:nrow(x),1),]
+}
+onecell <- function(x) {
+        sapply(samples,pullonecell)
+}
+#################################
+# Compute pairwise correlations #
+#################################
+n_rep <- 10
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseCor)
+inter_corr <- unmatrix(do.call("rbind",repmeans))
+inter_corr <- cbind(rep(paste0("Inter_", dataset, "_Correlation"),length(inter_corr)),inter_corr)
+inter_corr <- as.data.frame(cbind(rep("Inter",nrow(inter_corr)),inter_corr))
+colnames(inter_corr) <- c("Type","TypeSamples","Correlation")
+inter_corr$Correlation <- as.numeric(as.character(inter_corr$Correlation))
+hist(inter_corr$Correlation)
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseConcordance)
+inter_agree <- unmatrix(do.call("rbind",repmeans))
+inter_agree <- cbind(rep(paste0("Inter_", dataset, "_Concordance"),length(inter_agree)),inter_agree)
+inter_agree <- as.data.frame(cbind(rep("Inter",nrow(inter_agree)),inter_agree))
+colnames(inter_agree) <- c("Type","TypeSamples","Kappa")
+inter_agree$Kappa <- as.numeric(as.character(inter_agree$Kappa))
+hist(inter_agree$Kappa)
+###################
+# Intra functions #
+###################
+intrapairwiseCor <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+corr_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        corr_vector[i] <- round(cor(cell1,cell2,method="spearman"),4)
+}
+corr_vector
+}
+intrapairwiseConcordance <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+kappa_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell1 <- ifelse(cell1 == 0, 0, 1)
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        cell2 <- ifelse(cell2 == 0, 0, 1)
+        if (mean(cell1) != 1 & mean(cell2) != 1){
+        kappa_vector[i] <- Kappa.test(cell1,cell2)$Result$estimate
+        } else {
+        kappa_vector[i] <- NA
+        }
+}
+kappa_vector
+}
+samples <- as.data.frame(uncorrelatedgenes)
+samples <- split(samples[,c(-1,-2)],samples$MethodID)
+intra_corr <- as.numeric(unlist(sapply(samples,intrapairwiseCor)))
+intra_corr <- cbind(rep(paste0("Inter_", dataset, "_Correlation"),length(intra_corr)),intra_corr)
+intra_corr <- as.data.frame(cbind(rep("Intra",nrow(intra_corr)),intra_corr))
+colnames(intra_corr) <- c("Type","TypeSamples","Correlation")
+intra_corr$Correlation <- as.numeric(as.character(intra_corr$Correlation))
+hist(intra_corr$Correlation)
+intra_agree <- as.numeric(unlist(sapply(samples,intrapairwiseConcordance)))
+intra_agree <- cbind(rep(paste0("Inter_", dataset, "_Concordance"),length(intra_agree)),intra_agree)
+intra_agree <- as.data.frame(cbind(rep("Intra",nrow(intra_agree)),intra_agree))
+colnames(intra_agree) <- c("Type","TypeSamples","Kappa")
+intra_agree$Kappa <- as.numeric(as.character(intra_agree$Kappa))
+hist(intra_agree$Kappa)
+allcorr_DM1 <- rbind(inter_corr,intra_corr)
+allcorr_DM1$dataset = "DM1"
+allagree_DM1 <- rbind(inter_agree,intra_agree)
+allagree_DM1$dataset = "DM1"
+```
+
+```{r, message=FALSE}
+
+###########################
+# Read in and filter data #
+###########################
+fix.name <- function(x){
+  gsub(pattern = " ", replacement = "", 
+       sub("^([0-9].*)", "X\\1",
+           sub("C$", "",
+                gsub("^X", "",
+                    gsub(pattern = "-|/", replacement = "_", 
+                        gsub("\\+", "p", x))))))
+}
+
+dataset = "TALL"
+load("/blackhole/alessia/CircModel/data/TALLData_list.RData")
+
+meta.data <- read.csv("/blackhole/alessia/circzi/checkCircRNAnormalizationdistribution/realdata/TALL/meta_TALL.csv")
+
+coldata <- DataFrame(condition = meta.data$condition,
+                     group = ifelse(meta.data$groups=="Thymocyte", "normal", "TALL"),
+                     sample_id = meta.data$sample_id,
+                     row.names = meta.data$sample_id)
+coldata$condition <- factor(coldata$condition)
+coldata$group <- factor(coldata$group)
+coldata$sample <- as.character(coldata$sample_id)
+coldata
+glmm.db <- rbindlist(lapply(TALLData_list[1:6], function(x) data.frame(x, circ_id = rownames(x))), 
+                     idcol = "method", use.names = TRUE)
+glmm.melt <- rbindlist(lapply(TALLData_list[1:6], function(x) reshape2::melt(x)), 
+                     idcol = "method", use.names = TRUE)
+
+count.data.melt <- as.data.table(reshape2::melt(glmm.db, id.vars = c("method", "circ_id")))
+name.sep <- "."
+count.data.melt[, sample.name.ext := paste0(variable, name.sep, method)]
+count.data.merge <- merge(count.data.melt, coldata, by.x = "variable", by.y = "sample")
+
+colData.dt <- as.data.table(count.data.merge)[, .N, by = .(variable, method, 
+                                            group,
+                                            sample.name.ext)][, N := NULL][]
+
+colData <- data.frame(colData.dt, 
+                      row.names = "sample.name.ext")
+glmm.wide = dcast(glmm.melt, method+Var2~Var1, value.var = "value", fill=0)
+colnames(glmm.wide) = c("MethodID", "SampleID", colnames(glmm.wide)[-c(1,2)])
+glmm.wide = glmm.wide %>% mutate(sampleType = case_when(
+        SampleID%in%colData$variable[colData$group=="TALL"] ~ "Tumor",
+        SampleID%in%colData$variable[colData$group=="Normal"] ~ "Normal") %>%
+  as.factor() %>%
+  structure(levels = c("Tumor","Normal")))
+
+##############################
+# Pull uncorrelated circRNAs #
+##############################
+reduced <- glmm.wide %>% dplyr::select(-c(MethodID, SampleID, sampleType)) %>% as.data.frame()
+genelist <- colnames(reduced)
+uncorrelatedgenes <- glmm.wide[,c("MethodID","sampleType")]
+for (i in 1:500){
+  # i=1
+  genename <- sample(genelist,1)
+  drawngene <- reduced[,genename]
+  uncorrelatedgenes <- cbind(uncorrelatedgenes,drawngene)
+  correlations <- abs(cor(drawngene,reduced))
+  genelist <- names(correlations[,which(correlations < 0.25)])
+  reduced <- reduced[,genelist]
+  if (ncol(reduced) < 10) break
+}
+samples <- as.data.frame(uncorrelatedgenes)
+################################
+# Pull one sampl per method #
+################################
+samples <- split(samples[,c(-1, -2)],samples$MethodID)
+pullonecell <- function(x) {
+        x[sample(1:nrow(x),1),]
+}
+onecell <- function(x) {
+        sapply(samples,pullonecell)
+}
+#################################
+# Compute pairwise correlations #
+#################################
+n_rep <- 10
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseCor)
+inter_corr <- unmatrix(do.call("rbind",repmeans))
+inter_corr <- cbind(rep(paste0("Inter_", dataset, "_Correlation"),length(inter_corr)),inter_corr)
+inter_corr <- as.data.frame(cbind(rep("Inter",nrow(inter_corr)),inter_corr))
+colnames(inter_corr) <- c("Type","TypeSamples","Correlation")
+inter_corr$Correlation <- as.numeric(as.character(inter_corr$Correlation))
+hist(inter_corr$Correlation)
+repmeans <- 1:n_rep %>% map(onecell) %>% map(interpairwiseConcordance)
+inter_agree <- unmatrix(do.call("rbind",repmeans))
+inter_agree <- cbind(rep(paste0("Inter_", dataset, "_Concordance"),length(inter_agree)),inter_agree)
+inter_agree <- as.data.frame(cbind(rep("Inter",nrow(inter_agree)),inter_agree))
+colnames(inter_agree) <- c("Type","TypeSamples","Kappa")
+inter_agree$Kappa <- as.numeric(as.character(inter_agree$Kappa))
+hist(inter_agree$Kappa)
+###################
+# Intra functions #
+###################
+intrapairwiseCor <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+corr_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        corr_vector[i] <- round(cor(cell1,cell2,method="spearman"),4)
+}
+corr_vector
+}
+intrapairwiseConcordance <- function(X){
+pairs <- combn(rownames(as.data.frame(X)), 2, simplify=FALSE)
+#pairs <- sample(pairs,20)
+kappa_vector <- vector(mode="numeric",length=length(pairs))
+for (i in 1:length(pairs)){
+        cell1 <- as.numeric(X[pairs[[i]][1],])
+        cell1 <- ifelse(cell1 == 0, 0, 1)
+        cell2 <- as.numeric(X[pairs[[i]][2],])
+        cell2 <- ifelse(cell2 == 0, 0, 1)
+        if (mean(cell1) != 1 & mean(cell2) != 1){
+        kappa_vector[i] <- Kappa.test(cell1,cell2)$Result$estimate
+        } else {
+        kappa_vector[i] <- NA
+        }
+}
+kappa_vector
+}
+samples <- as.data.frame(uncorrelatedgenes)
+samples <- split(samples[,c(-1,-2)],samples$MethodID)
+intra_corr <- as.numeric(unlist(sapply(samples,intrapairwiseCor)))
+intra_corr <- cbind(rep(paste0("Inter_", dataset, "_Correlation"),length(intra_corr)),intra_corr)
+intra_corr <- as.data.frame(cbind(rep("Intra",nrow(intra_corr)),intra_corr))
+colnames(intra_corr) <- c("Type","TypeSamples","Correlation")
+intra_corr$Correlation <- as.numeric(as.character(intra_corr$Correlation))
+hist(intra_corr$Correlation)
+intra_agree <- as.numeric(unlist(sapply(samples,intrapairwiseConcordance)))
+intra_agree <- cbind(rep(paste0("Inter_", dataset, "_Concordance"),length(intra_agree)),intra_agree)
+intra_agree <- as.data.frame(cbind(rep("Intra",nrow(intra_agree)),intra_agree))
+colnames(intra_agree) <- c("Type","TypeSamples","Kappa")
+intra_agree$Kappa <- as.numeric(as.character(intra_agree$Kappa))
+hist(intra_agree$Kappa)
+allcorr_TALL <- rbind(inter_corr,intra_corr)
+allcorr_TALL$dataset = "TALL"
+allagree_TALL <- rbind(inter_agree,intra_agree)
+allagree_TALL$dataset = "TALL"
+```
+
+```{r}
+allcorr = rbind(allcorr_ALZ, allcorr_IPF, allcorr_DM1)
+png(paste0("/blackhole/alessia/GLMM_article/consinstency/IntraInterCorr_GLMM.png"), 
+    res = 150, units = "cm", width = 14, height = 14)
+ggplot(allcorr, aes(x=dataset,y=Correlation,fill=Type)) + geom_boxplot() + 
+  theme_classic() +
+  # scale_y_continuous(limits=c(0.2,0.6),breaks=(seq(-10,10,1)/10)) +
+  theme(axis.title.x = element_text(size = 16), axis.text.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16), axis.text.y = element_text(size = 16), legend.text = element_text(size = 15))
+dev.off()
+
+allagree = rbind(allagree_TALL, allagree_ALZ, allagree_DM1, allagree_IPF)
+png(paste0("/blackhole/alessia/CircModel/consinstency/IntraInterKappa_GLMM.png"), 
+    res = 150, units = "cm", width = 14, height = 14)
+ggplot(allagree, aes(x=dataset,y=Kappa,fill=Type)) + geom_boxplot() + theme_classic() + scale_y_continuous(breaks=(seq(-10,10,1)/10)) #+
+  #theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank())
+dev.off()
+```

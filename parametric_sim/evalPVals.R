@@ -66,10 +66,10 @@ stats_sim <- function(matrix){
 }
 
 evals_file="/blackhole/alessia/GLMM_article/parametric_sim/ALZ_4detmet_evals_parametricsimulations_power.RDS" #from eval_function_call.R
-evals_file="/blackhole/alessia/CircModel/parametric_sim/IPF_detmet_evals_allGLMM_parametricsimulations_S123_power.RDS" #from eval_function_call.R
+evals_file="/blackhole/alessia/GLMM_article/parametric_sim/IPF_4detmet_evals_parametricsimulations_power.RDS" #from eval_function_call.R
 
 sim_flow_file="/blackhole/alessia/GLMM_article/parametric_sim/ALZ_simulation_flow.RData"
-sim_flow_file="/blackhole/alessia/CircModel/data/IPF_simulation_flow.RData"
+sim_flow_file="/blackhole/alessia/GLMM_article/parametric_sim/IPF_simulation_flow.RData"
 evals <- readRDS(file = evals_file)
 evals_noTM <- lapply(evals, function(methods){methods %>% purrr::list_modify("truemodel" = NULL)})
 evals_noTM <- lapply(evals_noTM, function(methods){methods %>% purrr::list_modify("Y" = NULL)})
@@ -128,7 +128,8 @@ df_creator <- function(evals_file, sim_flow_file, out_dir){
 
 DT = rbindlist(lapply(evals_noTM, function(x){
     # x = evals_noTM$`simulation: 1_dataset:findcirc_distribution:NB_sampleSize:5_FPR:0.1_foldEffect:1.5_seed:142180635`
-    rbindlist(lapply(lapply(lapply(x, "[[", "pValMat"), function(x) as.data.frame(x)), setDT, keep.rownames = TRUE),
+    rbindlist(lapply(lapply(lapply(x, "[[", "pValMat"), function(x) as.data.frame(x)), 
+                     setDT, keep.rownames = TRUE),
               idcol = c("det.method","rn"))
 }), idcol = "ID")
 DT_flow = DT %>%
@@ -165,6 +166,8 @@ eval_stats <-
   
   eval_stats = melt(eval_stats, variable_name = "method")
   eval_stats = dcast(eval_stats, .id + method ~ stats)
+
+  evals_stats_df <- data.frame(eval_stats) 
   
   colnames(eval_stats) <- c("Rep",colnames(eval_stats)[-1])
   nmethods <- length(unique(eval_stats$method))
@@ -234,10 +237,11 @@ eval_stats <-
                                          return(data.frame(tpr = tpr, se = se))
                                        })
   cat("Saving data","\n")
-  write.csv(evals_stats_df,file = paste0(out.dir,"evals_stats_glm_ALZ_df.csv"))
-  write.csv(evals_ROC_df,file = paste0(out.dir,"evals_ROC_glm_ALZ_df.csv"))
-  write.csv(evals_ROC_summary_df,file = paste0(out.dir,"evals_ROCF_glm_ALZ_summary_df.csv"))
-  write.csv(evals_ROC_summary_mean_df,file = paste0(out.dir,"evals_ROC_glm_ALZ_summary_mean_df.csv"))
+  data = "IPF"
+  write.csv(evals_stats_df,file = paste0(out.dir,"evals_stats_glm_",data,"_df.csv"))
+  write.csv(evals_ROC_df,file = paste0(out.dir,"evals_ROC_glm_",data,"_df.csv"))
+  write.csv(evals_ROC_summary_df,file = paste0(out.dir,"evals_ROCF_glm_",data,"_summary_df.csv"))
+  write.csv(evals_ROC_summary_mean_df,file = paste0(out.dir,"evals_ROC_glm_",data,"_summary_mean_df.csv"))
 }
 
 ### Example code to generate power data.frames 
