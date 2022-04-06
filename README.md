@@ -7,7 +7,7 @@ Here we present a novel approach to detect circRNAs differentially expressed (DE
   <li> the ability of differential expression detection methods in terms of Consistency; </li> 
   <li> the power of differntial expression detection methods. </li> </ul>
 
-Data used in this analysis was retrieved from available GEO repository of Ribo-depleted RNA-seq samples of two or more different conditions (`GSE136200`, `GSE86356`, `PRJNA484546`, `GSE52463`).
+Data used in this analysis was retrieved from available GEO repository of Ribo-depleted RNA-seq samples of two or more different conditions (`GSE53697`, `GSE86356`, `GSE52463`).
 
 ### Robustness
 The directory _./robustness/_ contains:
