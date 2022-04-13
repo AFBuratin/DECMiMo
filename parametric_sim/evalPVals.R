@@ -41,7 +41,7 @@ evalPVals <- function(resi, alpha = 0.05, pvalsType = "adjP", rawPvalsType = "ra
   rocObj = try(AUC::roc(1 - resi[, pvalsType], factor(as.numeric(wh.truth))))
   return(c("NA_Proportion" = NA_prop, 
            TPs = length(wh.TP),
-           DECs = length(wh.TP),
+           DECs = length(wh.pos),
            Sensitivity = Sensitivity, 
            Specificity = Specificity, 
            FDR = FDR, 
@@ -132,15 +132,16 @@ DT = rbindlist(lapply(evals_noTM, function(x){
                      setDT, keep.rownames = TRUE),
               idcol = c("det.method","rn"))
 }), idcol = "ID")
+
 DT_flow = DT %>%
-    separate(ID, c("Rep", "dataset","distribution","sampleSize","FPR","foldEffect","seed"), "_")
+    separate(ID, c("simulation", "dataset","distribution","sampleSize","FPR","foldEffect","seed"), "_")
   
-minPadj = aggregate(adjP ~ det.method + rn + Rep, DT_flow, function(x) min(x))
-minPadj$Rep = sub(".*:", "", minPadj$Rep)
+minPadj = aggregate(adjP ~ det.method + rn + simulation, DT_flow, function(x) min(x))
+minPadj$simulation = sub(".*:", "", minPadj$simulation)
 res_min_Test = list()
-for(i in unique(minPadj$Rep)){
+for(i in unique(minPadj$simulation)){
   # i=1
-  res_min_Test[[i]] = minPadj %>% dplyr::filter(Rep%in%i) %>% dcast(rn~det.method,value.var="adjP")
+  res_min_Test[[i]] = minPadj %>% dplyr::filter(simulation%in%i) %>% dcast(rn~det.method,value.var="adjP")
 }
 
 eval_stats <- 
@@ -169,11 +170,11 @@ eval_stats <-
 
   evals_stats_df <- data.frame(eval_stats) 
   
-  colnames(eval_stats) <- c("Rep",colnames(eval_stats)[-1])
-  nmethods <- length(unique(eval_stats$method))
+  colnames(evals_stats_df) <- c("Rep",colnames(eval_stats)[-1])
+  nmethods <- length(unique(evals_stats_df$method))
   
-  eval_stats$method <- factor(eval_stats$method)
-  eval_stats$method <- factor(eval_stats$method, levels = levels(eval_stats$method), 
+  evals_stats_df$method <- factor(evals_stats_df$method)
+  evals_stats_df$method <- factor(evals_stats_df$method, levels = levels(evals_stats_df$method), 
                                 labels = c("DESeq2",
                                            "edgeR-robust",
                                            "voom"

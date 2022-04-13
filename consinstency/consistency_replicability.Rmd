@@ -63,7 +63,7 @@ methods2 <- c("GLMM",
               
               "DESeq2",
              
-              "edgeR-robust",
+              "edgeR",
               
               "voom")
 names(cols) <- methods2
@@ -116,15 +116,15 @@ ps_fitted$Heldout$lfc <- lfc_GLM_GLMM_rep_Heldout
 
 maxrank = 1000
 
-conc.witbet.ALZ <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
+# conc.witbet.ALZ <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
 conc.witbet.IPF <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
 # conc.witbet.TALL <- compute_concordance_withbetw(ps_fitted_list = ps_fitted, maxrank = maxrank)
 # write.csv(conc.witbet.IPF, "/blackhole/alessia/GLMM_article/consinstency/conc_witbet_IPF_30.csv")
 # write.csv(conc.witbet.ALZ, "/blackhole/alessia/GLMM_article/consinstency/conc_witbet_ALZ_30.csv")
 # write.csv(conc.witbet.TALL, "/blackhole/alessia/CircModel/consinstency/conc_witbet_TALL_30.csv")
 
-conc.betglmm.ALZ <- compute_concordance_withGLMM(ps_fitted_list = ps_fitted, maxrank = maxrank)
-conc.betglmm.IPF <- compute_concordance_withGLMM(ps_fitted_list = ps_fitted, maxrank = maxrank)
+# conc.betglmm.ALZ <- compute_concordance_withGLMM(ps_fitted_list = ps_fitted, maxrank = maxrank)
+# conc.betglmm.IPF <- compute_concordance_withGLMM(ps_fitted_list = ps_fitted, maxrank = maxrank)
 # write.csv(conc.betglmm.ALZ, "/blackhole/alessia/GLMM_article/consinstency/conc_betGLMMadj_ALZ_30.csv")
 # write.csv(conc.betglmm.IPF, "/blackhole/alessia/GLMM_article/consinstency/conc_betGLMMadj_IPF_30.csv")
 
@@ -136,7 +136,7 @@ conc.betglmm.ALZ <- read.csv("/blackhole/alessia/GLMM_article/consinstency/conc_
 
 concordance_df_summary <- suppressWarnings(ddply(conc.witbet.IPF, ~ rank + method1 + method2, function(x) colMeans(x[,c("concordance", "nfeatures")])))
 
-AUC_AOC_between_methods <- suppressWarnings(ddply(concordance_df_summary, ~ method1 + method2, function(x) AucAocFun(cVals = x$concordance[x$rank <= 1000], nfeatures = mean(x$nfeatures[x$rank <= 1000]), threshold = 1000)))
+AUC_AOC_between_methods <- suppressWarnings(ddply(concordance_df_summary, ~ method1 + method2, function(x) AucAocFun(cVals = x$concordance[x$rank <= 250], nfeatures = mean(x$nfeatures[x$rank <= 250]), threshold = 250)))
 
 ```
 
@@ -150,10 +150,17 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
       # setsize="N03"
       # dataset="DM1"
     AUC_AOC_between_methods.F <- AUC_AOC_between_methods
+    AUC_AOC_between_methods.F$method1 = factor(AUC_AOC_between_methods.F$method1, levels = c("DESeq2", "GLMM", "edgeR-robust","voom"),
+                                labels = c("DESeq2", "GLMM", "edgeR","voom"))
+    AUC_AOC_between_methods.F$method2 = factor(AUC_AOC_between_methods.F$method2, levels = c("DESeq2", "GLMM", "edgeR-robust","voom"),
+                                labels = c("DESeq2", "GLMM", "edgeR","voom"))
     concordance_df_summary.F <- concordance_df_summary
+    concordance_df_summary.F$method1 <- factor(concordance_df_summary.F$method1, levels = c("DESeq2", "GLMM", "edgeR-robust","voom"),
+                                labels = c("DESeq2", "GLMM", "edgeR","voom"))
+    concordance_df_summary.F$method2 <- factor(concordance_df_summary.F$method2, levels = c("DESeq2", "GLMM", "edgeR-robust","voom"),
+                                labels = c("DESeq2", "GLMM", "edgeR","voom"))
     forlegend <- AUC_AOC_between_methods.F
-    forlegend$method1 <- factor(forlegend$method1)
-
+    
     g_legend_dendrogram <- get_legend(ggplot() +
                                         geom_point(data=forlegend, aes(x = method1, y = 1, color = method1),size = 5) +
                                         scale_color_manual(values = cols) +
@@ -175,11 +182,12 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
     })
     concordance_df_summary.F_area <- cbind(concordance_df_summary.F,area = area)
     # As factor
-    concordance_df_summary.F_area$method1 <- factor(concordance_df_summary.F_area$method1,
-                                                    levels = unique(concordance_df_summary.F_area$method1)[hc$order])
-
-    concordance_df_summary.F_area$method2 <- factor(concordance_df_summary.F_area$method2,
-                                                    levels = unique(concordance_df_summary.F_area$method2)[hc$order])
+    concordance_df_summary.F_area$method1 <- factor(concordance_df_summary.F_area$method1)
+    concordance_df_summary.F_area$method1 <- factor(concordance_df_summary.F_area$method1, levels = c("DESeq2", "GLMM", "edgeR","voom")[hc$order],
+                                labels = c("DESeq2","GLMM", "edgeR","voom")[hc$order])
+    concordance_df_summary.F_area$method2 <- factor(concordance_df_summary.F_area$method2)
+    concordance_df_summary.F_area$method2 <- factor(concordance_df_summary.F_area$method2, levels = c("DESeq2", "GLMM","edgeR","voom")[hc$order],
+                                labels = c("DESeq2","GLMM","edgeR","voom")[hc$order])
     # edges
     edges <- data.frame(x = c(0,0,100,100),
                         xend = c(0,100,100,0),
@@ -209,17 +217,17 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
       coord_cartesian(xlim = c(0,100), ylim = c(0,1)) +
 
       geom_ribbon(aes(ymin = rank/nfeatures, ymax = concordance, fill = area)) +
-      geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
-                   mapping = aes(x = 0, xend = 0, y = 0, yend = 1, color = "red")) +
-
-      geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
-                   mapping = aes(x = 100, xend = 100, y = 1, yend = 0, color = "red")) +
-      geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
-                   mapping = aes(x = 0, xend = 100, y = 1, yend = 1, color = "red")) +
-      geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
-                   mapping = aes(x = 100, xend = 0, y = 0, yend = 0, color = "red")) +
+      # geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
+      #              mapping = aes(x = 0, xend = 0, y = 0, yend = 1, color = "green")) +
+      # 
+      # geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
+      #              mapping = aes(x = 100, xend = 100, y = 1, yend = 0, color = "green")) +
+      # geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
+      #              mapping = aes(x = 0, xend = 100, y = 1, yend = 1, color = "green")) +
+      # geom_segment(concordance_df_summary.F_area[concordance_df_summary.F_area$method1 == concordance_df_summary.F_area$method2,],
+      #              mapping = aes(x = 100, xend = 0, y = 0, yend = 0, color = "blue")) +
       #scale_fill_gradientn(colours = c("red","yellow","turquoise"),limits = c(-0.01,1)) +
-      scale_fill_distiller(palette = "RdYlBu",limits = c(0,1), direction = -1) +
+      scale_fill_distiller(palette = "Reds",limits = c(0,1), direction = -1) +
       #scale_color_gradientn(colours = c("red","yellow","turquoise"),limits = c(-0.1,1)) +
       scale_y_continuous(breaks = c(0,0.5,1),position = "right") +
       scale_x_continuous(breaks = c(0,50,100))
@@ -243,8 +251,8 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
             legend.position = "none",
             panel.spacing = unit(0, "lines"),
             plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
-      ggtitle(label = paste(dataset,collapse = " - "),
-            subtitle = "Concordance heatmap")
+      # ggtitle(label = paste(dataset,collapse = " - "),
+      #       subtitle = "Concordance heatmap")
 
     g_horizontal_dendrogram <- ggplot() +
       geom_segment(data=dendro_data(hc)$segments, aes(x=x, y=y, xend=xend, yend=yend)) +
@@ -276,7 +284,7 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
                                     theme(legend.position = "bottom", text = element_text(size=14)) +
                                     guides(fill = guide_colorbar(title.position = "top",barwidth = 15)) +
                                     geom_ribbon(aes(ymin = rank/nfeatures, ymax = concordance, fill = area),alpha = 0.8) +
-                                    scale_fill_distiller(palette = "RdYlBu",limits = c(0,1), direction = -1) +
+                                    scale_fill_distiller(palette = "Reds",limits = c(0,1), direction = -1) +
                                     scale_y_continuous(breaks = c(0,0.5,1),position = "left") +
                                     scale_x_continuous(breaks = c(0,50,100)))
 
@@ -294,6 +302,190 @@ gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
   # return(gheat.list)
 }
 
+```
+
+
+```{r}
+gheat <- function(AUC_AOC_between_methods,concordance_df_summary){
+ # Filtering
+  #gheat.list = list()
+  # for(m in unique(AUC_AOC_between_methods$SetSize)){
+      # setsize="N03"
+      # dataset="DM1"
+    AUC_AOC_between_methods.F <- AUC_AOC_between_methods
+    concordance_df_summary.F <- concordance_df_summary
+    forlegend <- AUC_AOC_between_methods.F
+    forlegend$method1 <- factor(forlegend$method1)
+
+    AUC_AOC_between_methods.F$method1 = factor(AUC_AOC_between_methods.F$method1,levels = unique(AUC_AOC_between_methods.F$method1), 
+                                       labels = c(
+                                                  "DESeq2",
+                                                  
+                                                  "edgeR",
+                                                  
+                                                  "GLMM",
+                                                  "voom"), ordered = F)
+    AUC_AOC_between_methods.F$method2 = factor(AUC_AOC_between_methods.F$method2,levels = unique(AUC_AOC_between_methods.F$method2), 
+                                               labels = c(
+                                                          "DESeq2",
+                                                          
+                                                          "edgeR",
+                                                          
+                                                          "GLMM",
+                                                          "voom"), ordered = F)
+    concordance_df_summary.F$method1 <- factor(concordance_df_summary.F$method1, levels = c("DESeq2", "GLMM", "edgeR-robust","voom"),
+                                labels = c("DESeq2", "GLMM", "edgeR","voom"))
+    concordance_df_summary.F$method2 <- factor(concordance_df_summary.F$method2, levels = c("DESeq2", "GLMM", "edgeR-robust","voom"),
+                                labels = c("DESeq2", "GLMM", "edgeR","voom"))
+    forlegend$method1 <- factor(forlegend$method1,levels = c("DESeq2",
+                                           
+                                           "edgeR",
+                                          
+                                           "voom",
+                                           
+                                           "GLMM"), 
+                                labels = c("DESeq2",
+                                           
+                                           "edgeR",
+                                          
+                                           "voom",
+                                           "GLMM"), ordered = T)
+    g_legend_dendrogram <- get_legend(ggplot() + 
+                                        geom_point(data=forlegend, aes(x = method1, y = 1, color = method1),size = 5) +
+                                        scale_color_manual(values = cols) +
+                                        theme_minimal() +
+                                        theme(legend.position = "bottom") +
+                                        guides(color = guide_legend(title = "Methods:",title.position = "left",nrow = 3)))
+    
+    # Clustering
+    dist_matrix <- dcast(data = AUC_AOC_between_methods.F, formula = method1 ~ method2,value.var = "conservArea")
+    dist_df <- dist_matrix[,2:ncol(dist_matrix)]
+    rownames(dist_df) <- colnames(dist_df)
+    distances <- as.dist(1-dist_df)
+    hc <- hclust(d = distances)
+    # Area extraction
+    area <- apply(concordance_df_summary.F,1,function(x){
+      area <- AUC_AOC_between_methods.F$conservArea[AUC_AOC_between_methods.F$method1 %in% x["method1"] & AUC_AOC_between_methods.F$method2 %in% x["method2"]]
+      return(1-area)
+    })
+    concordance_df_summary.F_area <- cbind(concordance_df_summary.F,area = area)
+    # As factor
+    concordance_df_summary.F_area$method1 <- factor(concordance_df_summary.F_area$method1,
+                                                    levels = unique(concordance_df_summary.F_area$method1)[hc$order],
+                                                    labels = c(
+                                                               "DESeq2",
+                                                               
+                                                               "edgeR",
+                                                               
+                                                               "GLMM",
+                                                               "voom")[hc$order]) 
+    
+    concordance_df_summary.F_area$method2 <- factor(concordance_df_summary.F_area$method2,
+                                                    levels = unique(concordance_df_summary.F_area$method2)[hc$order],
+                                                    c(
+                                                      "DESeq2",
+                                                      
+                                                      "edgeR",
+                                                      
+                                                      "GLMM",
+                                                      "voom")[hc$order]) 
+    edges <- data.frame(x = c(0,0,100,100),
+                        xend = c(0,100,100,0),
+                        y = c(0,1,1,0),
+                        yend = c(1,1,0,0))
+    # heatmap
+    g_heat <- ggplot(concordance_df_summary.F_area,aes(x = rank, y = concordance)) +
+      #geom_line(size = 1) +
+      facet_grid(method1 ~ method2,scales = "free_x",switch = "y") +
+      xlab("Rank") + # ylab("Concordance") +
+      theme_pubr() + 
+      theme(axis.text = element_blank(),
+            #axis.text.x = element_text(hjust = 1, angle = 45),
+            legend.position = "none",
+            axis.title.y = element_blank(),
+            axis.ticks = element_blank(),
+            axis.line.x.bottom = element_blank(),
+            axis.line.y.right = element_blank(),
+            # strip.text = element_text(hjust = 100, vjust = 100),
+            # strip.background = element_rect(fill = "gray",linetype = 1,color = "white")) + 
+            strip.text = element_blank(),
+            strip.background = element_blank(),
+            panel.spacing = unit(0,"cm"),
+            plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm")) +
+      #geom_abline(mapping = aes(intercept = 0,slope = 1/nfeatures),color = "red",lty = 2) +
+      coord_cartesian(xlim = c(0,10), ylim = c(0,1)) +
+      
+      geom_ribbon(aes(ymin = rank/nfeatures, ymax = concordance, fill = area)) +
+     
+      #scale_fill_gradientn(colours = c("red","yellow","turquoise"),limits = c(-0.01,1)) +
+      scale_fill_distiller(palette = "Reds",limits = c(0,1),direction = -1) +
+      #scale_color_gradientn(colours = c("red","yellow","turquoise"),limits = c(-0.1,1)) +
+      scale_y_continuous(breaks = c(0,0.5,1),position = "right") +
+      scale_x_continuous(breaks = c(0,50,100))
+    
+    g_vertical_dendrogram <- ggplot() + 
+      geom_segment(data=dendro_data(hc)$segments, aes(x=x, y=y, xend=xend, yend=yend)) + 
+      geom_label(data=dendro_data(hc)$labels, aes(x=x, y=y, label=label, hjust=1,color=label), nudge_y = 0) +
+      coord_flip() + scale_y_reverse(expand = c(0,0,0,0)) + scale_x_reverse() +
+      scale_color_manual(values = cols) +
+      theme(axis.line.y=element_blank(),
+            axis.ticks.y=element_blank(),
+            axis.line.x=element_blank(),
+            axis.ticks.x=element_blank(),
+            axis.text.y=element_blank(),
+            axis.title.y=element_blank(),
+            axis.text.x=element_blank(),
+            axis.title.x=element_blank(),
+            panel.background=element_rect(fill="white"),
+            panel.grid=element_blank(),
+            legend.position = "none",
+            panel.spacing = unit(0, "lines"),
+            plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))
+     
+    g_horizontal_dendrogram <- ggplot() + 
+      geom_segment(data=dendro_data(hc)$segments, aes(x=x, y=y, xend=xend, yend=yend)) + 
+      geom_point(data=dendro_data(hc)$labels, aes(x=x, y=y,color=label),size = 5) +
+      scale_y_continuous() +
+      #scale_y_reverse(expand=c(2,1)) + scale_x_reverse(expand=c(2,1)) +
+      scale_color_manual(values = cols) +
+      theme(axis.line.y=element_blank(),
+            axis.ticks.y=element_blank(),
+            axis.line.x=element_blank(),
+            axis.ticks.x=element_blank(),
+            axis.text.y=element_blank(),
+            axis.title.y=element_blank(),
+            axis.text.x=element_blank(),
+            axis.title.x=element_blank(),
+            panel.background=element_rect(fill="white"),
+            panel.grid=element_blank(),
+            legend.position = "none",
+            panel.spacing = unit(0, "lines"),
+            plot.margin = unit(c(0.1,0.1,0.1,0.1), "cm"))
+    
+    addline_format <- function(x,...){
+      gsub(':\\s',':\n',x)
+    }
+    g_heat_w_legend <- get_legend(ggplot(concordance_df_summary.F_area,aes(x = rank, y = concordance)) +
+                                    facet_grid(method1 ~ method2,scales = "free_x",switch = "y") +
+                                    labs(fill = addline_format("Rescaled Area from Rank 1 to 100 between: bisector and concordance")) +
+                                    theme_minimal() + 
+                                    theme(legend.position = "bottom") +
+                                    guides(fill = guide_colorbar(title.position = "top",barwidth = 15)) +
+                                    geom_ribbon(aes(ymin = rank/nfeatures, ymax = concordance, fill = area),alpha = 0.8) +
+                                    scale_fill_distiller(palette = "Reds",limits = c(0,1), direction = -1) +
+                                    scale_y_continuous(breaks = c(0,0.5,1),position = "right") +
+                                    scale_x_continuous(breaks = c(0,50,100)))
+
+    a <- plot_grid(plotlist = list(#g_horizontal_dendrogram,g_horizontal_dendrogram,
+                                   g_vertical_dendrogram,g_heat),align = "hv",axis = "lrtb", rel_widths = c(0.3,0.7))#,
+    dendro <- g_vertical_dendrogram
+    b <- g_heat_w_legend
+    c <- g_legend_dendrogram
+    return(list(dendro = dendro, heat = a,legend_heat = b, legend_dendro = c))
+    # gheat.list[[m]] <- list(plot = a,legend_heat = b, legend_dendro = c)
+  # }
+  # return(gheat.list)
+}
 ```
 
 ## Figure Consintency across Data sets and sample size
@@ -317,11 +509,11 @@ dev.off()
 
 ```{r}
 #conc_df_sub <- conc[conc$rank == maxrank & conc$subset == "HeldoutvsTest",]
-conc_df_sub <- conc.betglmm.IPF[conc.betglmm.IPF$rank == 1000 & conc.betglmm.IPF$subset == "HeldoutvsTest",]
-conc_df_sub <- conc.witbet.IPF[conc.witbet.IPF$rank == 1000 & conc.witbet.IPF$subset == "HeldoutvsTest",]
+conc_df_sub <- conc.betglmm.IPF[conc.betglmm.IPF$rank == 500 & conc.betglmm.IPF$subset == "HeldoutvsTest",]
+conc_df_sub <- conc.witbet.IPF[conc.witbet.IPF$rank == 90 & conc.witbet.IPF$subset == "HeldoutvsTest",]
 
 conc_df_sub <- conc.betglmm.ALZ[conc.betglmm.ALZ$rank == 1000 & conc.betglmm.ALZ$subset == "HeldoutvsTest",]
-conc_df_sub <- conc.witbet.ALZ[conc.witbet.ALZ$rank == 1000 & conc.witbet.ALZ$subset == "HeldoutvsTest",]
+conc_df_sub <- conc.witbet.ALZ[conc.witbet.ALZ$rank == 100 & conc.witbet.ALZ$subset == "HeldoutvsTest",]
 
 ord <- order(ddply(conc_df_sub,.variables = ~ method1, function(x) median(x[,"concordance"]))$V1)
 conc_df_sub$method1 <- factor(conc_df_sub$method1)
@@ -329,13 +521,79 @@ conc_df_sub$method1 <- factor(conc_df_sub$method1, levels = levels(conc_df_sub$m
                               labels = c(
                                          "DESeq2",
                                          
-                                         "edgeR-robust",
+                                         "edgeR",
                                         
                                          "GLMM",
                                          "voom"))
                                          # "EBSeq"))
-png(paste0("/blackhole/alessia/GLMM_article/consinstency/ConcordancewithGLMM_r30_top", maxrank, "IPF", ".png"), 
-    res = 100, units = "cm", width = 15, height = 15)
+# png(paste0("/blackhole/alessia/GLMM_article/consinstency/ConcordancewithGLMM_r30_top", maxrank, "IPF", ".png"), 
+#     res = 100, units = "cm", width = 15, height = 15)
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+ return(data_sum)
+}
+df2 <- data_summary(conc_df_sub, varname="concordance", 
+                    groupnames=c("method1"))
+# Convert dose to a factor variable
+df2$method1=as.factor(df2$method1)
+head(df2)
+ggplot(df2, aes(x=method1, y=concordance, fill=method1)) + 
+  geom_bar(stat="identity", color="black", 
+           position=position_dodge()) +
+  geom_errorbar(aes(ymin=concordance-sd, ymax=concordance+sd), width=.2,
+                 position=position_dodge(.9)) 
+my_comparisons <- list( c("DESeq2", "GLMM"),
+                        c("edgeR", "GLMM"),
+                        c("voom", "GLMM"))
+conc_df_sub$method1 = factor(conc_df_sub$method1, levels = c("GLMM","DESeq2","edgeR","voom"), ordered = T)
+# Box plots with p-values
+library(ggpubr)
+library(rstatix)
+stat.test <- conc_df_sub %>%
+  # group_by(supp) %>%
+  t_test(concordance ~ method1)
+stat.test
+stat.test <- stat.test %>% add_y_position()
+ggboxplot(conc_df_sub, x = "method1", y = "concordance", fill = "method1") +
+  stat_pvalue_manual(stat.test[1:3,], label = "p", tip.length = 0.01) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.1))) +
+   theme_classic() +
+  theme(plot.margin = unit(c(0,0,0,0), "cm"),
+        legend.position = "none",
+        panel.spacing = unit(1,"lines"),
+        axis.text.x = element_text(angle = 30, hjust = 1, size = 14),
+        axis.text.y = element_text(size = 14),
+        title = element_text(size = 15),
+        axis.title=element_text(size=14,face="bold"),
+        strip.text.x = element_text(size = 14)) +
+  scale_fill_manual(values = cols) 
+
+ggboxplot(conc_df_sub, x = "method1", y = "concordance",
+          color = "method1")+ 
+  # stat_compare_means(comparisons = my_comparisons)+ # Add pairwise comparisons p-value
+  #stat_compare_means(label.y = 1)  +   # Add global p-value
+  stat_compare_means(label = "p.signif", 
+                     method = "t.test",
+                     ref.group = "GLMM") +
+  
+  theme_classic() +
+  theme(plot.margin = unit(c(0,0,0,0), "cm"),
+        legend.position = "none",
+        panel.spacing = unit(1,"lines"),
+        axis.text.x = element_text(angle = 30, hjust = 1, size = 14),
+        axis.text.y = element_text(size = 14),
+        title = element_text(size = 15),
+        axis.title=element_text(size=14,face="bold"),
+        strip.text.x = element_text(size = 14)) +
+  scale_color_manual(values = cols) 
+
 ggplot(conc_df_sub, aes(x = method1, y = concordance, color = method1)) +
     geom_boxplot() +
     # coord_flip() +
@@ -348,14 +606,14 @@ ggplot(conc_df_sub, aes(x = method1, y = concordance, color = method1)) +
     theme(plot.margin = unit(c(0,0,0,0), "cm"),
           legend.position = "none",
           panel.spacing = unit(1,"lines"),
-          axis.text.x = element_text(angle = 30, hjust = 1, size = 14,face="bold"),
+          axis.text.x = element_text(angle = 30, hjust = 1, size = 14),
           axis.text.y = element_text(size = 14),
           title = element_text(size = 15),
           axis.title=element_text(size=14,face="bold"),
           strip.text.x = element_text(size = 14)) +
     scale_color_manual(values = cols) +
     scale_y_continuous(limits = c(0,1))
-dev.off()
+# dev.off()
 ```
 
 
@@ -365,7 +623,7 @@ Average WMC values between datasets and simulations to rank methods.
 
 ```{r}
 
-AUC_WM_df <- conc_df_sub[conc_df_sub$rank == 400 & conc_df_sub$subset == "HeldoutvsTest",]
+AUC_WM_df <- conc_df_sub[conc_df_sub$rank == 1000 & conc_df_sub$subset == "HeldoutvsTest",]
 summary_rank <- function(AUC_WM_df = AUC_WM_df){
   data <- AUC_WM_df
   ranking <- ddply(data, ~ comparison, function(x) rank(x[,"concordance"])*(30/nrow(x)))
@@ -384,6 +642,7 @@ rank_WM_concordance$method <- factor(rank_WM_concordance$method, levels = levels
                                          
                                          "GLMM",
                                          "voom"))
+rank_WM_concordance$value = rank(rank_WM_concordance$value)
 saveRDS(file = "/blackhole/alessia/GLMM_article/data/WMC_summary_30r.RDS",object = rank_WM_concordance)
 ```
 
@@ -395,7 +654,7 @@ library(UpSetR)
 library(tidyverse)
 library(venneuler)
 library(grid)
-i = 5
+i = 7
 # decs_list <- lapply(ps_fitted$test$pval, FUN = function(det.method) {
 nmethods <- length(names(ps_fitted$test$pval[[i]]))-1
 det.method = ps_fitted$test$pval
@@ -404,7 +663,7 @@ det.method = ps_fitted$test$pval
   for(j in 1:nmethods){
     # j=1
     # dec = data.frame(decs = rownames(det.method$test$pval[[i]][!is.na(det.method$test$pval[[i]][,j]) & det.method$test$pval[[i]][,j]<0.1,]))
-    dec_list[[colnames(det.method[[i]])[j+1]]] = data.frame(decs = rownames(det.method[[i]][!is.na(det.method[[i]][,j+1]) & det.method[[i]][,j+1]<=0.1,]))
+    dec_list[[colnames(det.method[[i]])[j+1]]] = data.frame(decs = det.method[[i]][!is.na(det.method[[i]][,j+1]) & det.method[[i]][,j+1]<=0.1,"rn"])
 
   }
   # return(dec_list)
@@ -419,11 +678,13 @@ decs_list_glmm <- data.frame(methods = "GLMM", decs = rownames(ps_fitted$Heldout
   for(j in 1:nmethods){
     # j=1
     # dec = data.frame(decsT = rownames(det.method$Heldout$pval[[i]][!is.na(det.method$Heldout$pval[[i]][,j]) & det.method$Heldout$pval[[i]][,j]<0.1,]))
-    decsT_list[[colnames(ps_fitted$Heldout$pval[[i]])[j+1]]] = data.frame(decsT = rownames(ps_fitted$Heldout$pval[[i]][!is.na(ps_fitted$Heldout$pval[[i]][,j+1]) & ps_fitted$Heldout$pval[[i]][,j+1]<=0.1,]))
+    decsT_list[[colnames(ps_fitted$Heldout$pval[[i]])[j+1]]] = data.frame(decs = ps_fitted$Heldout$pval[[i]][!is.na(ps_fitted$Heldout$pval[[i]][,j+1]) & ps_fitted$Heldout$pval[[i]][,j+1]<=0.1,"rn"])
 
   }
 
 
+names(decsT_list) = paste0(names(decsT_list),"-verification")
+names(dec_list) = paste0(names(dec_list),"-evaluation")
 
 # decs_list <- lapply(ps_fitted, FUN = function(method) data.frame(decs = names(method$pValMat[!is.na(method$pValMat[,2]) & method$pValMat[,2]<0.05,2])))
 # ps = ps_fitted$ccp
@@ -438,8 +699,8 @@ decs_rlist <- rbindlist(dec_list, idcol = "methods")
 decsT_rlist <- rbindlist(decsT_list, idcol = "methods")
 
 
-decs_tabs <-  as.data.frame(xtabs(~methods+decs, data=decs_rlist)) %>% reshape2::dcast(decs ~ methods, value.var = "Freq")
-decsT_tabs <- as.data.frame(xtabs(~methods+decsT, data=decsT_rlist)) %>% reshape2::dcast(decsT ~ methods, value.var = "Freq")
+decs_tabs <-  as.data.frame(xtabs(~methods+decs, data=rbind.fill(decs_rlist, decsT_rlist))) %>% reshape2::dcast(decs ~ methods, value.var = "Freq")
+# decsT_tabs <- as.data.frame(xtabs(~methods+decsT, data=decsT_rlist)) %>% reshape2::dcast(decsT ~ methods, value.var = "Freq")
 
 # rawSets <- read.csv(
 #           file = "https://raw.githubusercontent.com/lgellis/MiscTutorial/master/sets/seniorTransportation.csv",
@@ -507,19 +768,32 @@ decsT_tabs <- as.data.frame(xtabs(~methods+decsT, data=decsT_rlist)) %>% reshape
 
 
   decs_t = decs_tabs
+  # decs_t$TP = "FP"
+  # tp <- decsT_tabs[which(decsT_tabs$GLMM==1),"decsT"]
+  # decs_t$TP[decs_t$decs%in%tp] = "TP"
+  UpSetR::upset(decs_t,
+      # queries = list(
+      #   list(query = elements, 
+      #    params = list("TP", "FP"), color = "#e69f00", active = T)),
+    sets = colnames(decs_t)[-c(1, ncol(decs_t))], 
+    number.angles = 30, #point.size = 2, line.size = 1, 
+    mainbar.y.label = paste0("DECs Intersections"), 
+    sets.x.label = paste0("DECs per DEMs"), 
+    text.scale = c(1.3, 1.3, 1, 1, 2, 2), order.by = "freq")
+
+decs_t = decsT_tabs
   decs_t$TP = "FP"
   tp <- decsT_tabs[which(decsT_tabs$GLMM==1),"decsT"]
   decs_t$TP[decs_t$decs%in%tp] = "TP"
   UpSetR::upset(decs_t,
-      queries = list(
-        list(query = elements, 
-         params = list("TP", "FP"), color = "#e69f00", active = T)),
+      # queries = list(
+      #   list(query = elements, 
+      #    params = list("TP", "FP"), color = "#e69f00", active = T)),
     sets = colnames(decs_t)[-c(1, ncol(decs_t))], 
     number.angles = 30, #point.size = 2, line.size = 1, 
     mainbar.y.label = paste0("DECs Intersections"), 
-    sets.x.label = paste0("DECs Per method"), 
+    sets.x.label = paste0("DECs per DEMs"), 
     text.scale = c(1.3, 1.3, 1, 1, 2, 2), order.by = "freq")
-
 
 # decs_tabs$TP <- "FP"
 # decs_tabs$TP[grep("TP", decs_tabs$decs)] <- "TP"
@@ -586,7 +860,7 @@ library(UpSetR)
 library(tidyverse)
 library(venneuler)
 library(grid)
-i = 3
+i = 9
 decs_list <- lapply(ps_fitted_all, FUN = function(det.method) {
   nmethods <- length(names(det.method$test$pval[[i]][,-1]))
 

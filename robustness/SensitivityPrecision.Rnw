@@ -36,23 +36,23 @@ library("dplyr")
 alpha=.1
 getCalls <- function(m, alpha=NULL) {
   t(sapply(1:nreps, function(i) sapply(namesAlgos, function(algo) {
-    sum(m[[i]][[algo]][!is.na(m[[i]][[algo]])]<0.1)
+    sum(m[[i]][[algo]][!is.na(m[[i]][[algo]])]<=0.1)
     # sum((m[[i]][[algo]] < alpha))
   })))
 }
 
 getSensitivityAlgo <- function(m, alpha, alphaOut) {
   t(sapply(1:nreps, function(i) sapply(namesAlgosALL, function(algo) {
-    sigHeldout <- resHeldout[[m]][[i]][[algo]] <= alpha
-    mean((resTes[[m]][[i]][[algo]] <= alpha)[sigHeldout])
+    sigHeldout <- resHeldout.adj[[m]][[i]][[algo]] <= alpha
+    mean((resTes.adj[[m]][[i]][[algo]] <= alpha)[sigHeldout])
   })))
 }
 
 getPrecisionAlgo <- function(m, alpha, alphaOut) {
   t(sapply(1:nreps, function(i) sapply(namesAlgosALL, function(algo) {
-    sigTest <- resTes[[m]][[i]][[algo]] <= alpha #Evaluation set
+    sigTest <- resTes.adj[[m]][[i]][[algo]] <= alpha #Evaluation set
     if (sum(sigTest) == 0) return(0)
-    mean((resHeldout[[m]][[i]][[algo]] <= alpha)[sigTest]) #TP rate
+    mean((resHeldout.adj[[m]][[i]][[algo]] <= alpha)[sigTest]) #TP rate
   })))
 }
 
@@ -83,7 +83,7 @@ renameAtoB <- function(f,a,b) {
 
 <<namesAlgos>>=
 namesAlgos <- c("DESeq2",
-                "edgeR-robust",
+                "edgeR",
                 "voom",
                 "GLMM")
 names(namesAlgos) <- namesAlgos
@@ -107,7 +107,7 @@ methods2 <- c("GLMM",
               
               "DESeq2",
              
-              "edgeR-robust",
+              "edgeR",
               
               "voom")
 names(cols) <- methods2
@@ -129,11 +129,13 @@ nalgo <- 4
 resTes.adj = lapply(res_GLM_GLMM_rep_Test, function(x){
   new.res = x %>% dplyr::select(-GLMM)
   new.res = new.res %>% dplyr::rename(GLMM = GLMMadj)
+  new.res = new.res %>% dplyr::rename(edgeR = `edgeR-robust`)
   return(new.res)})
 
 resHeldout.adj = lapply(res_GLM_GLMM_rep_Heldout, function(x){
   new.res = x %>% dplyr::select(-GLMM)
   new.res = new.res %>% dplyr::rename(GLMM = GLMMadj)
+  new.res = new.res %>% dplyr::rename(edgeR = `edgeR-robust`)
   return(new.res)})
 
 # resTes.adj_20 = resTes.adj
@@ -152,7 +154,7 @@ d <- data.frame(heldoutCalls=reshape2::melt(heldMat)$value,
                 algorithm=factor(rep(namesAlgos,each=nrow(heldMat)),
                 levels=namesAlgos))
                 #detection.method=rep(factor(rep(names(resHeldout), each=nrow(heldMat))), nalgo))
-d$algorithm <- renameAtoB(d$algorithm, "edgeR.robust", "edgeR-robust")
+d$algorithm <- renameAtoB(d$algorithm, "edgeR.robust", "edgeR")
 
 d$algorithm <- as.character(d$algorithm)
 
@@ -172,13 +174,13 @@ p + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() +
   theme(plot.margin = unit(c(0,0,0,0), "cm"),
           legend.position = "none",
           panel.spacing = unit(1,"lines"),
-          axis.text.x = element_text(angle = 30, hjust = 1, size = 14,face="bold"),
+          axis.text.x = element_text(angle = 30, hjust = 1, size = 14),
           axis.text.y = element_text(size = 14),
           title = element_text(size = 15),
           axis.title=element_text(size=14,face="bold"),
           strip.text.x = element_text(size = 14)) +
   xlab("") + 
-    ggtitle(paste0(Dataset, " - Dataset")) +
+    ggtitle(paste0("ALZ", " - Dataset")) +
     ylab("number of DE calls in Evaluation set")
 dev.off()
 @ 
@@ -193,13 +195,13 @@ p + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() +
     theme(plot.margin = unit(c(0,0,0,0), "cm"),
           legend.position = "none",
           panel.spacing = unit(1,"lines"),
-          axis.text.x = element_text(angle = 30, hjust = 1, size = 14,face="bold"),
+          axis.text.x = element_text(angle = 30, hjust = 1, size = 14),
           axis.text.y = element_text(size = 14),
           title = element_text(size = 15),
           axis.title=element_text(size=14,face="bold"),
           strip.text.x = element_text(size = 14)) +
   xlab("") + 
-    ggtitle(paste0(Dataset, " - Dataset")) +
+    ggtitle(paste0("ALZ", " - Dataset")) +
     ylab("number of DE calls in Verification set")
 dev.off()
 @ 
@@ -224,37 +226,87 @@ return(z)})
 
 getSensitivityAlgoGold <- function(alpha, alphaOut, gold) {
   t(sapply(1:nreps, function(i) sapply(namesAlgos, function(algo) {
-    sigHeldout <- resHeldout.adj[[i]][[gold]] <= alphaOut
-    mean((resTes.adj[[i]][[algo]] <= alpha)[sigHeldout])
+    # i=1
+     # Evaluate detection performance.
+  wh.pred = resTes.adj[[i]][[algo]] <= alpha
+  wh.pos = which(wh.pred)
+  wh.neg = which(!wh.pred)
+  wh.TP = which(resHeldout.adj[[i]][[gold]] <= alphaOut)
+  # Calc number of differentially abundant circRNAs
+  FPs = sum(!wh.pos %in% wh.TP)
+  TPs = sum(wh.pos %in% wh.TP)
+  TNs = sum(!wh.neg %in% wh.TP)
+  FNs = sum(wh.neg %in% wh.TP)
+  # Sensitivity: True Positives divided by all positives (sum of true
+  # positives and false negatives)
+  Sensitivity = TPs/(TPs + FNs)
+  # Specificity: True negatives divided by all negatives (sum of true
+  # negatives and false positives)
+  # Specificity = TNs/(TNs + FPs)
+  # false discovery rate: false positives divided by all detected positives
+  # precision = if ((TPs + FPs) == 0) 0 else TPs/(TPs + FPs)
+  Sensitivity
   })))
 }
+# getSensitivityAlgoGold <- function(alpha, alphaOut, gold) {
+#   t(sapply(1:nreps, function(i) sapply(namesAlgos, function(algo) {
+#     # i=9
+#     sigHeldout <- resHeldout.adj[[i]][[gold]] < alphaOut
+#     mean((resTes.adj[[i]][[algo]] < alpha)[!is.na(sigHeldout)])
+#   })))
+# }
+
 sensMat <- do.call(rbind,lapply(namesAlgos, function(algo) {
     res <- getSensitivityAlgoGold(.1,.1,algo)
     data.frame(res,heldout=rep(algo,nrow(res)))
 }))
-colnames(sensMat) = c("DESeq2","edgeR-robust","voom","GLMM","heldout")
+colnames(sensMat) = c("DESeq2","edgeR","voom","GLMM","heldout")
 sensMelt <- melt(sensMat, id="heldout")
 names(sensMelt) <- c("heldout","test","sensitivity")
 names(sensMelt) <- c("verification","evaluation","sensitivity")
-sensMelt = sensMelt %>% dplyr::filter(verification==evaluation)
+# sensMelt = sensMelt %>% dplyr::filter(verification==evaluation)
 
 
 getPrecisionAlgoGold <- function(alpha, alphaOut, gold) {
   t(sapply(1:nreps, function(i) sapply(namesAlgos, function(algo) {
-    sigTest <- resTes.adj[[i]][[algo]] < alpha
-    if (sum(sigTest) == 0) return(0)
-    mean((resHeldout.adj[[i]][[gold]] < alphaOut)[sigTest])
+    # i=1
+     # Evaluate detection performance.
+  wh.pred = resTes.adj[[i]][[algo]] <= alpha
+  wh.pos = which(wh.pred)
+  wh.neg = which(!wh.pred)
+  wh.TP = which(resHeldout.adj[[i]][[gold]] <= alphaOut)
+  # Calc number of differentially abundant circRNAs
+  FPs = sum(!wh.pos %in% wh.TP)
+  TPs = sum(wh.pos %in% wh.TP)
+  TNs = sum(!wh.neg %in% wh.TP)
+  FNs = sum(wh.neg %in% wh.TP)
+  # Sensitivity: True Positives divided by all positives (sum of true
+  # positives and false negatives)
+  # Sensitivity = TPs/(TPs + FNs)
+  # Specificity: True negatives divided by all negatives (sum of true
+  # negatives and false positives)
+  # Specificity = TNs/(TNs + FPs)
+  # false discovery rate: false positives divided by all detected positives
+  precision = if ((TPs + FPs) == 0) 0 else TPs/(TPs + FPs)
+  1-precision
   })))
 }
+# getPrecisionAlgoGold <- function( alpha, alphaOut, gold) {
+#   t(sapply(1:nreps, function(i) sapply(namesAlgos, function(algo) {
+#     sigTest <- resTes.adj[[i]][[algo]] < alpha
+#     if (sum(sigTest) == 0) return(0)
+#     mean((resHeldout.adj[[i]][[gold]] < alphaOut)[!is.na(sigTest)])
+#   })))
+# }
 precMat <- do.call(rbind,lapply(namesAlgos, function(algo) {
-    res <- getPrecisionAlgoGold(.1,.1,algo)
+    res <- getPrecisionAlgoGold(alpha = .1,alphaOut = .1,gold = algo)
     data.frame(res,heldout=rep(algo,nrow(res)))
 }))
-colnames(precMat) = c("DESeq2","edgeR-robust","voom","GLMM","heldout")
+colnames(precMat) = c("DESeq2","edgeR","voom","GLMM","heldout")
 precMelt <- melt(precMat, id="heldout")
 names(precMelt) <- c("heldout","test","precision")
 names(precMelt) <- c("verification","evaluation","precision")
-precMelt = precMelt %>% dplyr::filter(verification==evaluation)
+# precMelt = precMelt %>% dplyr::filter(verification==evaluation)
 
 d <- data.frame(sensMelt, precision=precMelt$precision)
 d$evaluation <- factor(d$evaluation, levels=namesAlgos)
@@ -286,25 +338,26 @@ d$verification <- factor(d$verification)
 @ 
 
 <<renameSensResults>>=
-d$evaluation <- renameAtoB(d$evaluation, "edgeR.robust", "edgeR-robust")
-d$verification <- renameAtoB(d$verification, "edgeR.robust", "edgeR-robust")
+
 d <- d %>%
   mutate_if(sapply(d, is.character), as.factor)
 # d$verification <- renameAtoB(d$verification, "GLMM", "GLMM-ZINB")
 # d$evaluation <- renameAtoB(d$evaluation, "GLMM", "GLMM-ZINB")
 png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_sensitivity_gold", Dataset[2],"_adj.png"), res = 150, units = "cm", width = 18, height = 18)
-p <- ggplot(d, aes(x=evaluation,y=sqrt(sensitivity),color=evaluation))
-p + scale_color_manual(values = cols) + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() + facet_wrap(~ verification) + 
+p <- ggplot(d, aes(x=evaluation,y=sensitivity,color=evaluation)) + scale_y_continuous(trans="log") + ylim(c(0,0.2))
+p + scale_color_manual(values = cols) + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + 
+  theme_bw() + facet_wrap(~ verification, nrow = 1) + 
   geom_point(position = position_jitter(w = 0.1, h = 0), color="grey50", size=1) +
-  theme(text = element_text(size=18),
+  theme(legend.position = "none",
+    text = element_text(size=18),
         axis.text.x = element_text(angle = 45, hjust = 1)) + 
   xlab("")
 dev.off()
 png(paste0("/blackhole/alessia/GLMM_article/robustness/Power_precision_gold", Dataset[2],"_adj.png"), res = 150, units = "cm", width = 18, height = 18)
-p <- ggplot(d, aes(x=evaluation,y=sqrt(precision),color=evaluation))
-p + scale_color_manual(values = cols) + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() + facet_wrap(~ verification) +
+p <- ggplot(d, aes(x=evaluation,y=precision,color=evaluation)) + scale_y_continuous(trans = "exp") #+ ylim(c(0.5,1))
+p + scale_color_manual(values = cols) + geom_boxplot(outlier.colour=rgb(0,0,0,0)) + theme_bw() + facet_wrap(~ verification, nrow=1) +
     geom_point(position = position_jitter(w = 0.1, h = 0), color="grey50", size=1) +
-  theme(text = element_text(size=18),
+  theme(legend.position = "none", text = element_text(size=18),
         axis.text.x = element_text(angle = 45, hjust = 1)) + 
   xlab("")
 dev.off()
@@ -385,7 +438,7 @@ fdrAtAlpha <- do.call(rbind, lapply(namesAlgos, function(algo) {
 fdrAtAlphaPlot <- fdrAtAlpha
 fdrAtAlphaPlot$algorithm  = factor(fdrAtAlphaPlot$algorithm )
 fdrAtAlphaPlot$verification = factor(fdrAtAlphaPlot$verification)
-fdrAtAlphaPlot$algorithm <- renameAtoB(fdrAtAlphaPlot$algorithm, "edgeR.robust", "edgeR-robust")
+fdrAtAlphaPlot$algorithm <- renameAtoB(fdrAtAlphaPlot$algorithm, "edgeR.robust", "edgeR")
 fdrAtAlphaPlot$verification <- renameAtoB(fdrAtAlphaPlot$verification, "edgeR.robust", "edgeR-robust")
 fdrAtAlphaPlot$verification <- renameAtoB(fdrAtAlphaPlot$verification, "edgeR.ZINBWave", "edgeR-ZINB Wave")
 fdrAtAlphaPlot$algorithm <- renameAtoB(fdrAtAlphaPlot$algorithm, "edgeR.ZINBWave", "edgeR-ZINB Wave")
@@ -497,8 +550,8 @@ precall = function(algo, rep, gold) {
 res_algo = list()
 res_accuracy = list()
 
-for(gold in names(resTes[[1]][,-1])){
-  for(algo in names(resTes[[1]][,-1])){
+for(gold in names(resTes.adj[[1]][,-1])){
+  for(algo in names(resTes.adj[[1]][,-1])){
     res = rbindlist(lapply(1:nreps, function(x) precall(algo = algo, rep = x, gold = gold)))
     res_accuracy[[algo]] = res
   }
@@ -541,9 +594,10 @@ library("gridExtra")
 library("grid")
 methods <- c("DESeq2",
              
-             "edgeR.robust",
+             "edgeR",
              
-             "GLMM")
+             "GLMM",
+             "voom")
 cols2 = cols
 names(cols2) <- methods
 

@@ -9,6 +9,10 @@ Here we present a novel approach to detect circRNAs differentially expressed (DE
 
 Data used in this analysis was retrieved from available GEO repository of Ribo-depleted RNA-seq samples of two or more different conditions (`GSE53697`, `GSE86356`, `GSE52463`).
 
+### GLMM matrix composition
+To perform GLMM on the combined matrix (CMAT) we used a function **get_combined_matrix** from the `egaffo/CREART` R package. 
+The function take as input `x` the list of the methods' output to be combined, or the path of the CirComPara2's results, or the full path to the circrnas.gtf file from the CirComPara's output. You have to specify in the option `select_methods` the names of the detection tools kept to compose the CMAT. 
+
 ### Robustness
 The directory _./robustness/_ contains:
 <ul>
@@ -42,4 +46,3 @@ Since the entire data production took a long time, the _./data/_ directory conta
 ## Instructions and R environment
 To replicate the analyses it is strongly suggested to clone or download the entire github directory. Some of the functions used this paper are adapted from the work of: _Assessment of statistical methods from single cell, bulk RNA-seq and metagenomics applied to microbiome data._, their original code is available at https://github.com/mcalgaro93/sc2meta. The analyses run in many version of R during the development, R 4.1.2 was the final R version on which the methods worked. 
 
-Here the `sessionInfo()`:

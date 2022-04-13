@@ -94,7 +94,7 @@ methods2 <- c("GLMM",
               
               "DESeq2",
              
-              "edgeR-robust",
+              "edgeR",
               
               "voom")
 names(cols) <- methods2
@@ -103,7 +103,7 @@ renameAtoB <- function(f,a,b) {
   f
 }
 rate_df$Method = factor(rate_df$Method)
-rate_df$Method <- renameAtoB(rate_df$Method, "edgeR.robust", "edgeR-robust")
+rate_df$Method <- renameAtoB(rate_df$Method, "edgeR.robust", "edgeR")
 
 rate_df$alpha = factor(rate_df$alpha)
 rate_df$alpha <- renameAtoB(rate_df$alpha, "res.1", "0.1")

@@ -41,7 +41,7 @@ evalPVals <- function(resi, alpha = 0.05, pvalsType = "adjP", rawPvalsType = "ra
   rocObj = try(AUC::roc(1 - resi[, pvalsType], factor(as.numeric(wh.truth))))
   return(c("NA_Proportion" = NA_prop, 
            TPs = length(wh.TP),
-           DECs = length(wh.TP),
+           DECs = length(wh.pos),
            Sensitivity = Sensitivity, 
            Specificity = Specificity, 
            FDR = FDR, 
@@ -79,7 +79,7 @@ rownames(simulation_flow.glmm) <- 1:nrow(simulation_flow.glmm)
 dim(simulation_flow.glmm)
 df_creator <- function(evals_file, sim_flow_file, out_dir){
   cat("Reading evals","\n")
-  evals = readRDS("/blackhole/alessia/GLMM_article/parametric_sim/IPF_glmm_parametricsimulations_power.RDS")
+  evals = readRDS("/blackhole/alessia/GLMM_article/parametric_sim/ALZ_glmm_parametricsimulations_power.RDS")
 
   names(evals) = apply(simulation_flow.glmm, 1, function(sim) paste(colnames(simulation_flow.glmm),
                                                                                  sim,
@@ -167,10 +167,10 @@ df_creator <- function(evals_file, sim_flow_file, out_dir){
   cat("Saving data","\n")
   out.dir = "/blackhole/alessia/GLMM_article/parametric_sim/"
   
-  write.csv(evals_stats_df,file = paste0(out.dir,"evals_stats_glmm_IPF_df.csv"))
-  write.csv(evals_ROC_df,file = paste0(out.dir,"evals_ROC_glmm_IPF_df.csv"))
-  write.csv(evals_ROC_summary_df,file = paste0(out.dir,"evals_ROC_glmm_IPF_summary_df.csv"))
-  write.csv(evals_ROC_summary_mean_df,file = paste0(out.dir,"evals_ROC_glmm_IPF_summary_mean_df.csv"))
+  write.csv(evals_stats_df,file = paste0(out.dir,"evals_stats_glmm_ALZ_df.csv"))
+  write.csv(evals_ROC_df,file = paste0(out.dir,"evals_ROC_glmm_ALZ_df.csv"))
+  write.csv(evals_ROC_summary_df,file = paste0(out.dir,"evals_ROC_glmm_ALZ_summary_df.csv"))
+  write.csv(evals_ROC_summary_mean_df,file = paste0(out.dir,"evals_ROC_glmm_ALZ_summary_mean_df.csv"))
 }
 
 ### Example code to generate power data.frames 
@@ -179,6 +179,9 @@ df_creator <- function(evals_file, sim_flow_file, out_dir){
 df_creator(evals_file="/blackhole/alessia/CircModel/parametric_sim/ALZ_detmet_evals_all_parametricsimulations_power.RDS", #from eval_function_call.R
            sim_flow_file="/blackhole/alessia/CircModel/parametric_sim/ALZ_glmm_simulation_flow.RData", #form simulator
            out_dir="/blackhole/alessia/CircModel/parametric_sim/")
+
+evals_ROC_glmm_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_ROC_glmm_IPF_df.csv")
+evals_ROC_met_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_ROC_glm_IPF_df.csv")
 
 evals_ROC_glmm_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_ROC_glmm_ALZ_df.csv")
 evals_ROC_met_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_ROC_glm_ALZ_df.csv")
@@ -194,6 +197,7 @@ evals_ROC_df$method <- factor(evals_ROC_df$method,
 evals_ROC_df %>% group_by(method) %>% dplyr::summarise(mean = mean(fpr))
 evals_ROC_df %>% group_by(method) %>% dplyr::summarise(mean = mean(auc))
 evals_ROC_df %>% group_by(method) %>% dplyr::summarise(mean = mean(tpr))
+
 evals_AUC_ROC_mean <- ddply(evals_ROC_df, ~ method, function(x) 1-mean(x[,"auc"]))
 rank_all <- data.frame(rank(evals_AUC_ROC_mean[,"V1"]))
 rank_all$method = evals_AUC_ROC_mean$method
@@ -242,8 +246,8 @@ ggplot(evals_ROC_df, aes(x=method, y = auc, color = method)) +
   ggtitle("AUC across sample size - Dataset IPF\n(n.sim,30; NB distr.; FC,1.5; TPR,0.1)")
 dev.off()
 
-evals_stats_met_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_stats_glm_ALZ_df.csv")
-evals_stats_glmm_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_stats_glmm_ALZ_df.csv")
+evals_stats_met_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_stats_glm_IPF_df.csv")
+evals_stats_glmm_df <- read.csv("/blackhole/alessia/GLMM_article/parametric_sim/evals_stats_glmm_IPF_df.csv")
 evals_stats_df = rbind.fill(evals_stats_glmm_df, evals_stats_met_df)
 evals_stats_df$method <- factor(evals_stats_df$method)
 evals_stats_df$method <- factor(evals_stats_df$method, 
